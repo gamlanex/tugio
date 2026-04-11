@@ -1,0 +1,1552 @@
+
+
+   ------------------------------ The old file before modularization --------------------------------------
+
+
+
+import 'dart:math' as math;
+import 'package:flutter/material.dart';
+import 'package:device_calendar_plus/device_calendar_plus.dart' as dc;
+
+
+
+
+void main() {
+  runApp(const TugioApp());
+}
+
+enum CalendarViewMode { day, week, month }
+enum BookingStatus { inquiry, booked }
+
+class Service {
+  final String name;
+  final IconData icon;
+  final List<String> slots;
+  final String description;
+
+  Service({
+    required this.name,
+    required this.icon,
+    required this.slots,
+    required this.description,
+  });
+}
+
+class Booking {
+  final String id;
+  final String service;
+  final DateTime start;
+  final int durationMinutes;
+  BookingStatus status;
+  String? note;
+  final bool importedFromDeviceCalendar;
+  final bool isAllDay;
+
+  Booking({
+    required this.id,
+    required this.service,
+    required this.start,
+    required this.durationMinutes,
+    required this.status,
+    this.note,
+    this.importedFromDeviceCalendar = false,
+    this.isAllDay = false,
+  });
+
+  DateTime get end => start.add(Duration(minutes: durationMinutes));
+
+  String get timeText {
+    if (isAllDay) return 'Cały dzień';
+    return '${_two(start.hour)}:${_two(start.minute)} - ${_two(end.hour)}:${_two(end.minute)}';
+  }
+
+  static String _two(int v) => v.toString().padLeft(2, '0');
+}
+
+class TugioApp extends StatelessWidget {
+  const TugioApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Tugio Demo',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorSchemeSeed: Colors.indigo,
+        scaffoldBackgroundColor: const Color(0xFFF6F7FB),
+      ),
+      home: const BookingScreen(),
+    );
+  }
+}
+
+class BookingScreen extends StatefulWidget {
+  const BookingScreen({super.key});
+
+  @override
+  State<BookingScreen> createState() => _BookingScreenState();
+}
+
+class _BookingScreenState extends State<BookingScreen> {
+  final List<Service> services = [
+    Service(
+      name: 'Fryzjer 1',
+      icon: Icons.content_cut,
+      description: 'Strzyżenie, modelowanie i szybkie wizyty kontrolne.',
+      slots: ['09:00', '10:00', '11:30', '13:00', '15:00', '17:00'],
+    ),
+    Service(
+      name: 'Fryzjer 2',
+      icon: Icons.face_retouching_natural,
+      description: 'Koloryzacja, pielęgnacja i stylizacja włosów.',
+      slots: ['08:30', '10:30', '12:00', '14:30', '16:30'],
+    ),
+    Service(
+      name: 'Psycholog',
+      icon: Icons.psychology,
+      description: 'Konsultacje indywidualne i spotkania terapeutyczne.',
+      slots: ['09:00', '10:30', '12:30', '15:00', '18:00'],
+    ),
+    Service(
+      name: 'Trening',
+      icon: Icons.fitness_center,
+      description: 'Trening personalny, plan ćwiczeń i analiza postępów.',
+      slots: ['07:00', '08:00', '17:00', '18:00', '19:00'],
+    ),
+  ];
+
+  late Service selectedService;
+  late DateTime selectedDate;
+  CalendarViewMode calendarMode = CalendarViewMode.day;
+
+  final List<Booking> myBookings = [];
+  bool _deviceCalendarLoaded = false;
+  bool _importInProgress = false;
+
+  double _dayZoom = 1.0;
+  double _weekZoom = 1.0;
+
+  final Map<int, Offset> _pointers = {};
+  double _initialDistance = 0.0;
+  double _initialZoom = 1.0;
+  bool _isTwoFingerScaling = false;
+
+  late final PageController _servicePageController;
+  final ScrollController _dayScrollController = ScrollController();
+  final ScrollController _weekScrollController = ScrollController();
+
+  @override
+  void initState() {
+    super.initState();
+    selectedService = services.first;
+    final now = DateTime.now();
+    selectedDate = DateTime(now.year, now.month, now.day);
+    _servicePageController = PageController(initialPage: 0);
+
+    myBookings.addAll([
+      Booking(
+        id: 'local_b1',
+        service: 'Dentysta',
+        start: DateTime(selectedDate.year, selectedDate.month, selectedDate.day, 12, 0),
+        durationMinutes: 60,
+        status: BookingStatus.booked,
+      ),
+      Booking(
+        id: 'local_b2',
+        service: 'Spotkanie',
+        start: DateTime(selectedDate.year, selectedDate.month, selectedDate.day, 15, 30),
+        durationMinutes: 30,
+        status: BookingStatus.inquiry,
+      ),
+      Booking(
+        id: 'local_b3',
+        service: 'Psycholog',
+        start: DateTime(selectedDate.year, selectedDate.month, selectedDate.day + 1, 10, 30),
+        durationMinutes: 60,
+        status: BookingStatus.booked,
+      ),
+    ]);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _loadDeviceCalendarEvents();
+    });
+  }
+
+  @override
+  void dispose() {
+    _servicePageController.dispose();
+    _dayScrollController.dispose();
+    _weekScrollController.dispose();
+    super.dispose();
+  }
+
+  double _distance(Offset a, Offset b) {
+    final dx = a.dx - b.dx;
+    final dy = a.dy - b.dy;
+    return math.sqrt(dx * dx + dy * dy);
+  }
+
+  Future<void> _loadDeviceCalendarEvents() async {
+    if (_deviceCalendarLoaded || _importInProgress) return;
+    _importInProgress = true;
+
+    try {
+      final currentStatus = await dc.DeviceCalendar.instance.hasPermissions();
+      dc.CalendarPermissionStatus status = currentStatus;
+
+      if (status != dc.CalendarPermissionStatus.granted) {
+        status = await dc.DeviceCalendar.instance.requestPermissions();
+      }
+
+      if (status != dc.CalendarPermissionStatus.granted) {
+        _importInProgress = false;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Brak zgody na odczyt kalendarza urządzenia')),
+          );
+        }
+        return;
+      }
+
+      final calendars = await dc.DeviceCalendar.instance.listCalendars();
+      final calendarIds = calendars.map((c) => c.id).whereType<String>().toList();
+
+      if (calendarIds.isEmpty) {
+        setState(() {
+          _deviceCalendarLoaded = true;
+        });
+        _importInProgress = false;
+        return;
+      }
+
+      final from = DateTime(selectedDate.year, selectedDate.month - 1, 1, 0, 0);
+      final to = DateTime(selectedDate.year, selectedDate.month + 2, 0, 23, 59);
+
+      final events = await dc.DeviceCalendar.instance.listEvents(
+        from,
+        to,
+        calendarIds: calendarIds,
+      );
+
+      final imported = <Booking>[];
+
+      for (final e in events) {
+        final start = e.startDate;
+        final end = e.endDate;
+        if (start == null || end == null) continue;
+
+        final duration = end.difference(start).inMinutes;
+        if (duration <= 0) continue;
+
+        final title = (e.title != null && e.title!.trim().isNotEmpty)
+            ? e.title!.trim()
+            : 'Event z kalendarza';
+
+        final id =
+            'device:${e.instanceId ?? e.eventId ?? '${start.millisecondsSinceEpoch}:$title'}';
+
+        final bool allDay = (e.isAllDay == true) ||
+            (start.hour == 0 &&
+                start.minute == 0 &&
+                end.hour == 0 &&
+                end.minute == 0 &&
+                duration >= 24 * 60);
+
+        imported.add(
+          Booking(
+            id: id,
+            service: title,
+            start: start,
+            durationMinutes: duration,
+            status: BookingStatus.booked,
+            note: 'Imported from device calendar',
+            importedFromDeviceCalendar: true,
+            isAllDay: allDay,
+          ),
+        );
+      }
+
+      setState(() {
+        myBookings.removeWhere((b) => b.importedFromDeviceCalendar);
+        myBookings.addAll(imported);
+        _deviceCalendarLoaded = true;
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Błąd importu kalendarza: $e')),
+        );
+      }
+    } finally {
+      _importInProgress = false;
+    }
+  }
+
+  Future<void> _reloadDeviceCalendarEventsForVisibleRange() async {
+    setState(() {
+      _deviceCalendarLoaded = false;
+    });
+    await _loadDeviceCalendarEvents();
+  }
+
+  Future<void> _moveSelectedDateBySwipe(int direction) async {
+    setState(() {
+      if (calendarMode == CalendarViewMode.day) {
+        selectedDate = selectedDate.add(Duration(days: direction));
+      } else if (calendarMode == CalendarViewMode.week) {
+        selectedDate = selectedDate.add(Duration(days: 7 * direction));
+      } else {
+        selectedDate = DateTime(
+          selectedDate.year,
+          selectedDate.month + direction,
+          selectedDate.day,
+        );
+      }
+    });
+
+    await _reloadDeviceCalendarEventsForVisibleRange();
+  }
+
+  void _handleHorizontalDragEnd(DragEndDetails details) {
+    if (_isTwoFingerScaling) return;
+
+    final velocity = details.primaryVelocity ?? 0;
+    if (velocity.abs() < 150) return;
+
+    if (velocity < 0) {
+      _moveSelectedDateBySwipe(1);
+    } else {
+      _moveSelectedDateBySwipe(-1);
+    }
+  }
+
+  Widget _zoomListener({
+    required Widget child,
+    required bool forDay,
+  }) {
+    return Listener(
+      behavior: HitTestBehavior.opaque,
+      onPointerDown: (event) {
+        _pointers[event.pointer] = event.position;
+
+        if (_pointers.length == 2) {
+          final points = _pointers.values.toList();
+          _initialDistance = _distance(points[0], points[1]);
+          _initialZoom = forDay ? _dayZoom : _weekZoom;
+          _isTwoFingerScaling = true;
+        }
+      },
+      onPointerMove: (event) {
+        if (!_pointers.containsKey(event.pointer)) return;
+        _pointers[event.pointer] = event.position;
+
+        if (_pointers.length == 2) {
+          final points = _pointers.values.toList();
+          final newDistance = _distance(points[0], points[1]);
+          if (_initialDistance <= 0) return;
+
+          final scale = newDistance / _initialDistance;
+          final oldZoom = forDay ? _dayZoom : _weekZoom;
+          final newZoom = (_initialZoom * scale).clamp(0.6, 2.2);
+
+          final controller = forDay ? _dayScrollController : _weekScrollController;
+          final oldOffset = controller.hasClients ? controller.offset : 0.0;
+
+          setState(() {
+            if (forDay) {
+              _dayZoom = newZoom;
+            } else {
+              _weekZoom = newZoom;
+            }
+          });
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!controller.hasClients) return;
+            final max = controller.position.maxScrollExtent;
+            final target = (oldOffset * (newZoom / oldZoom)).clamp(0.0, max);
+            if ((controller.offset - target).abs() > 1.0) {
+              controller.jumpTo(target);
+            }
+          });
+        }
+      },
+      onPointerUp: (event) {
+        _pointers.remove(event.pointer);
+        if (_pointers.length < 2) {
+          _isTwoFingerScaling = false;
+          _initialDistance = 0;
+        }
+      },
+      onPointerCancel: (event) {
+        _pointers.remove(event.pointer);
+        if (_pointers.length < 2) {
+          _isTwoFingerScaling = false;
+          _initialDistance = 0;
+        }
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onDoubleTap: () {
+          final controller = forDay ? _dayScrollController : _weekScrollController;
+          final oldZoom = forDay ? _dayZoom : _weekZoom;
+
+          setState(() {
+            if (forDay) {
+              _dayZoom = 1.0;
+            } else {
+              _weekZoom = 1.0;
+            }
+          });
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!controller.hasClients) return;
+            final max = controller.position.maxScrollExtent;
+            final target = (controller.offset * (1.0 / oldZoom)).clamp(0.0, max);
+            controller.jumpTo(target);
+          });
+        },
+        onHorizontalDragEnd: _handleHorizontalDragEnd,
+        child: child,
+      ),
+    );
+  }
+
+  Booking? bookingAt(DateTime start) {
+    for (final b in myBookings) {
+      if (_sameDateTime(b.start, start)) return b;
+    }
+    return null;
+  }
+
+  Booking? bookingForSelectedSlot(String time) {
+    final parts = time.split(':');
+    final hour = int.parse(parts[0]);
+    final minute = int.parse(parts[1]);
+
+    final slotStart = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      hour,
+      minute,
+    );
+
+    return bookingAt(slotStart);
+  }
+
+  void createInquiry(String time) {
+    final parts = time.split(':');
+    final hour = int.parse(parts[0]);
+    final minute = int.parse(parts[1]);
+
+    final start = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      hour,
+      minute,
+    );
+
+    if (bookingAt(start) != null) return;
+
+    setState(() {
+      myBookings.add(
+        Booking(
+          id: '${selectedService.name}_${start.millisecondsSinceEpoch}',
+          service: selectedService.name,
+          start: start,
+          durationMinutes: 60,
+          status: BookingStatus.inquiry,
+        ),
+      );
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Inquiry utworzone: ${selectedService.name}, $time')),
+    );
+  }
+
+  void confirmInquiryFromLan(String bookingId) {
+    final booking = myBookings.where((b) => b.id == bookingId).firstOrNull;
+    if (booking == null) return;
+
+    setState(() {
+      booking.status = BookingStatus.booked;
+    });
+  }
+
+  Future<void> showCancelDialog(Booking booking) async {
+    final controller = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Odwołać rezerwację?'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${booking.service}\n${booking.timeText}'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Opis / powód',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Nie'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Odwołaj'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == true) {
+      setState(() {
+        booking.note = controller.text.trim();
+        myBookings.removeWhere((b) => b.id == booking.id);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            controller.text.trim().isEmpty
+                ? 'Rezerwacja odwołana'
+                : 'Rezerwacja odwołana: ${controller.text.trim()}',
+          ),
+        ),
+      );
+    }
+  }
+
+  List<Booking> get selectedDayBookings {
+    final list = myBookings.where((b) => _sameDay(b.start, selectedDate)).toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+    return list;
+  }
+
+  List<DateTime> get selectedWeekDays {
+    final weekday = selectedDate.weekday;
+    final monday = selectedDate.subtract(Duration(days: weekday - 1));
+    return List.generate(7, (i) => monday.add(Duration(days: i)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPortrait = MediaQuery.of(context).orientation == Orientation.portrait;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Tugio – Rezerwacje'),
+        centerTitle: true,
+        actions: [
+          IconButton(
+            tooltip: 'Demo: LAN confirm',
+            onPressed: () {
+              final inquiry = myBookings.where((b) => b.status == BookingStatus.inquiry).firstOrNull;
+              if (inquiry != null) {
+                confirmInquiryFromLan(inquiry.id);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('LAN: inquiry zmienione na booked')),
+                );
+              }
+            },
+            icon: const Icon(Icons.wifi),
+          ),
+          IconButton(
+            tooltip: 'Reload calendar',
+            onPressed: () async {
+              await _reloadDeviceCalendarEventsForVisibleRange();
+            },
+            icon: const Icon(Icons.sync),
+          ),
+        ],
+      ),
+      body: SafeArea(
+        child: isPortrait ? _buildPortraitLayout() : _buildLandscapeLayout(),
+      ),
+    );
+  }
+
+  Widget _buildPortraitLayout() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        children: [
+          _sectionCard(title: 'Usługi', child: _buildServicesCarousel()),
+          const SizedBox(height: 12),
+          _sectionCard(
+            title: 'Wolne sloty – ${_formatDate(selectedDate)}',
+            child: _buildSlotsPanel(),
+          ),
+          const SizedBox(height: 12),
+          _sectionCard(title: 'Mój kalendarz', child: _buildCalendarPanel()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLandscapeLayout() {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: _scrollableSection(title: 'Usługi', child: _buildServicesCarousel()),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 4,
+            child: _scrollableSection(
+              title: 'Wolne sloty – ${_formatDate(selectedDate)}',
+              child: _buildSlotsPanel(),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 6,
+            child: _scrollableSection(title: 'Mój kalendarz', child: _buildCalendarPanel()),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionCard({required String title, required Widget child}) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 18,
+            color: Colors.black.withOpacity(0.06),
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _scrollableSection({required String title, required Widget child}) {
+    return Container(
+      height: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 18,
+            color: Colors.black.withOpacity(0.06),
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 12),
+          Expanded(
+            child: SingleChildScrollView(
+              child: child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildServicesCarousel() {
+    return Column(
+      children: [
+        SizedBox(
+          height: 210,
+          child: PageView.builder(
+            controller: _servicePageController,
+            itemCount: services.length,
+            onPageChanged: (index) {
+              setState(() {
+                selectedService = services[index];
+              });
+            },
+            itemBuilder: (context, index) {
+              final service = services[index];
+              final selected = service == selectedService;
+
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.indigo.withOpacity(0.08) : const Color(0xFFF4F5F9),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(
+                    color: selected ? Colors.indigo : Colors.transparent,
+                    width: 1.4,
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 84,
+                      height: 84,
+                      decoration: BoxDecoration(
+                        color: Colors.indigo.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Icon(
+                        service.icon,
+                        size: 42,
+                        color: Colors.indigo,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      service.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      service.description,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.25,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(services.length, (index) {
+            final isActive = services[index] == selectedService;
+            return AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              width: isActive ? 18 : 8,
+              height: 8,
+              decoration: BoxDecoration(
+                color: isActive ? Colors.indigo : Colors.grey.shade400,
+                borderRadius: BorderRadius.circular(999),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSlotsPanel() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragEnd: _handleHorizontalDragEnd,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          int columns = 3;
+          if (constraints.maxWidth < 300) {
+            columns = 2;
+          }
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDateNavigator(),
+              const SizedBox(height: 10),
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: selectedService.slots.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: columns,
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  mainAxisExtent: 74,
+                ),
+                itemBuilder: (context, index) {
+                  final slot = selectedService.slots[index];
+                  final booking = bookingForSelectedSlot(slot);
+                  return _buildSlotTile(slot, booking);
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSlotTile(String slot, Booking? booking) {
+    final isFree = booking == null;
+    final isInquiry = booking?.status == BookingStatus.inquiry;
+    final isBooked = booking?.status == BookingStatus.booked;
+
+    Color bg;
+    Color border;
+    String statusText;
+    IconData icon;
+
+    if (isFree) {
+      bg = Colors.indigo.withOpacity(0.08);
+      border = Colors.indigo;
+      statusText = 'Free';
+      icon = Icons.add_circle_outline;
+    } else if (isInquiry) {
+      bg = Colors.orange.withOpacity(0.14);
+      border = Colors.orange;
+      statusText = 'Inquiry';
+      icon = Icons.hourglass_top;
+    } else {
+      bg = Colors.green.withOpacity(0.14);
+      border = Colors.green;
+      statusText = 'Booked';
+      icon = Icons.check_circle_outline;
+    }
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () async {
+          if (booking == null) {
+            createInquiry(slot);
+          } else {
+            await showCancelDialog(booking);
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: border, width: 1.1),
+          ),
+          child: Column(
+            children: [
+              Text(
+                slot,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                  height: 1.0,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.72),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 11, color: border),
+                    const SizedBox(width: 3),
+                    Text(
+                      statusText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 9.8,
+                        fontWeight: FontWeight.w700,
+                        color: border,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalendarPanel() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildCalendarToolbar(),
+        const SizedBox(height: 12),
+        if (calendarMode == CalendarViewMode.day)
+          _zoomListener(
+            forDay: true,
+            child: _buildDayCalendarView(),
+          ),
+        if (calendarMode == CalendarViewMode.week)
+          _zoomListener(
+            forDay: false,
+            child: _buildWeekCalendarView(),
+          ),
+        if (calendarMode == CalendarViewMode.month)
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: _handleHorizontalDragEnd,
+            child: _buildMonthCalendarView(),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildCalendarToolbar() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildDateNavigator(),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<CalendarViewMode>(
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              padding: WidgetStateProperty.all(
+                const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+              ),
+              textStyle: WidgetStateProperty.all(
+                const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            segments: const [
+              ButtonSegment(
+                value: CalendarViewMode.day,
+                label: Text('Dzień', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              ButtonSegment(
+                value: CalendarViewMode.week,
+                label: Text('Tydz.', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+              ButtonSegment(
+                value: CalendarViewMode.month,
+                label: Text('Mies.', maxLines: 1, overflow: TextOverflow.ellipsis),
+              ),
+            ],
+            selected: {calendarMode},
+            onSelectionChanged: (value) {
+              setState(() {
+                calendarMode = value.first;
+              });
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDateNavigator() {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () async {
+            setState(() {
+              if (calendarMode == CalendarViewMode.day) {
+                selectedDate = selectedDate.subtract(const Duration(days: 1));
+              } else if (calendarMode == CalendarViewMode.week) {
+                selectedDate = selectedDate.subtract(const Duration(days: 7));
+              } else {
+                selectedDate = DateTime(selectedDate.year, selectedDate.month - 1, selectedDate.day);
+              }
+            });
+            await _reloadDeviceCalendarEventsForVisibleRange();
+          },
+          icon: const Icon(Icons.chevron_left),
+        ),
+        Expanded(
+          child: Center(
+            child: Text(
+              _toolbarTitle(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            ),
+          ),
+        ),
+        IconButton(
+          onPressed: () async {
+            setState(() {
+              if (calendarMode == CalendarViewMode.day) {
+                selectedDate = selectedDate.add(const Duration(days: 1));
+              } else if (calendarMode == CalendarViewMode.week) {
+                selectedDate = selectedDate.add(const Duration(days: 7));
+              } else {
+                selectedDate = DateTime(selectedDate.year, selectedDate.month + 1, selectedDate.day);
+              }
+            });
+            await _reloadDeviceCalendarEventsForVisibleRange();
+          },
+          icon: const Icon(Icons.chevron_right),
+        ),
+      ],
+    );
+  }
+
+  String _toolbarTitle() {
+    if (calendarMode == CalendarViewMode.day) return _formatDate(selectedDate);
+    if (calendarMode == CalendarViewMode.week) {
+      final week = selectedWeekDays;
+      return '${_shortDate(week.first)} – ${_shortDate(week.last)}';
+    }
+    return '${_monthName(selectedDate.month)} ${selectedDate.year}';
+  }
+
+  Widget _buildDayCalendarView() {
+    final double hourRowHeight = 64 * _dayZoom;
+    const int dayStartHour = 7;
+    const int dayEndHour = 21;
+    const double timeColumnWidth = 56;
+
+    final allDayBookings = myBookings
+        .where((b) => _sameDay(b.start, selectedDate) && b.isAllDay)
+        .toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    final timedBookings = myBookings
+        .where((b) => _sameDay(b.start, selectedDate) && !b.isAllDay)
+        .toList()
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    final totalHours = dayEndHour - dayStartHour;
+    final totalHeight = totalHours * hourRowHeight;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (allDayBookings.isNotEmpty) ...[
+          const Text(
+            'Cały dzień',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          ),
+          const SizedBox(height: 8),
+          Column(
+            children: allDayBookings.map((booking) {
+              final color =
+              booking.status == BookingStatus.booked ? Colors.green : Colors.orange;
+
+              return Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.18),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: color, width: 1.1),
+                ),
+                child: Text(
+                  booking.service,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 12),
+        ],
+        SizedBox(
+          height: 520,
+          child: SingleChildScrollView(
+            controller: _dayScrollController,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: timeColumnWidth,
+                  height: totalHeight,
+                  child: Column(
+                    children: List.generate(totalHours, (index) {
+                      final hour = dayStartHour + index;
+                      return SizedBox(
+                        height: hourRowHeight,
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: Text(
+                            '${hour.toString().padLeft(2, '0')}:00',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+                Expanded(
+                  child: Container(
+                    height: totalHeight,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF9FAFD),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.black12),
+                    ),
+                    child: Stack(
+                      children: [
+                        ...List.generate(totalHours, (index) {
+                          final top = index * hourRowHeight;
+                          return Positioned(
+                            top: top,
+                            left: 0,
+                            right: 0,
+                            child: Container(
+                              height: hourRowHeight,
+                              decoration: BoxDecoration(
+                                border: Border(
+                                  top: BorderSide(color: Colors.grey.shade300, width: 1),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                        ...timedBookings.map((booking) {
+                          final startMinutes =
+                              (booking.start.hour - dayStartHour) * 60 + booking.start.minute;
+                          final top = startMinutes / 60 * hourRowHeight;
+                          final rawHeight = booking.durationMinutes / 60 * hourRowHeight;
+                          final blockHeight = rawHeight < 34 ? 34.0 : rawHeight;
+
+                          final color = booking.status == BookingStatus.booked
+                              ? Colors.green
+                              : Colors.orange;
+
+                          final showTime = blockHeight >= 52;
+                          final showStatus = blockHeight >= 68;
+
+                          return Positioned(
+                            top: top,
+                            left: 10,
+                            right: 10,
+                            height: blockHeight,
+                            child: InkWell(
+                              onTap: () => showCancelDialog(booking),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: color.withOpacity(0.20),
+                                  borderRadius: BorderRadius.circular(14),
+                                  border: Border.all(color: color, width: 1.2),
+                                ),
+                                child: ClipRect(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        booking.service,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 12.5,
+                                          height: 1.0,
+                                        ),
+                                      ),
+                                      if (showTime) ...[
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          booking.timeText,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            height: 1.0,
+                                          ),
+                                        ),
+                                      ],
+                                      if (showStatus) ...[
+                                        const SizedBox(height: 3),
+                                        Text(
+                                          booking.status == BookingStatus.booked
+                                              ? 'Booked'
+                                              : 'Inquiry',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.w700,
+                                            color: color,
+                                            height: 1.0,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildWeekCalendarView() {
+    final weekDays = selectedWeekDays;
+    final double rowHeight = 38 * _weekZoom;
+    const double headerHeight = 52;
+    const int dayStartHour = 7;
+    const int dayEndHour = 21;
+    final totalRows = dayEndHour - dayStartHour;
+
+    return SizedBox(
+      height: 520,
+      child: SingleChildScrollView(
+        controller: _weekScrollController,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                const SizedBox(width: 52),
+                ...weekDays.map((day) {
+                  final selected = _sameDay(day, selectedDate);
+                  return Expanded(
+                    child: InkWell(
+                      onTap: () async {
+                        setState(() {
+                          selectedDate = DateTime(day.year, day.month, day.day);
+                          calendarMode = CalendarViewMode.day;
+                        });
+                        await _reloadDeviceCalendarEventsForVisibleRange();
+                      },
+                      child: Container(
+                        height: headerHeight,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: selected ? Colors.indigo.withOpacity(0.12) : const Color(0xFFF4F5F9),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: selected ? Colors.indigo : Colors.transparent,
+                          ),
+                        ),
+                        child: Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(_weekdayShort(day.weekday), style: const TextStyle(fontSize: 10.5)),
+                              Text('${day.day}', style: const TextStyle(fontWeight: FontWeight.w700)),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: totalRows * rowHeight.toDouble(),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 52,
+                    child: Column(
+                      children: List.generate(totalRows, (i) {
+                        final hour = dayStartHour + i;
+                        return SizedBox(
+                          height: rowHeight,
+                          child: Align(
+                            alignment: Alignment.topLeft,
+                            child: Text(
+                              '${hour.toString().padLeft(2, '0')}:00',
+                              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
+                  ),
+                  ...weekDays.map((day) {
+                    final bookings = myBookings
+                        .where((b) => _sameDay(b.start, day) && !b.isAllDay)
+                        .toList();
+
+                    return Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF9FAFD),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: Stack(
+                          children: [
+                            ...List.generate(totalRows, (i) {
+                              return Positioned(
+                                top: i * rowHeight.toDouble(),
+                                left: 0,
+                                right: 0,
+                                child: Container(
+                                  height: rowHeight,
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      top: BorderSide(color: Colors.grey.shade300, width: 0.8),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                            ...bookings.map((booking) {
+                              final top = ((booking.start.hour - dayStartHour) * 60 +
+                                  booking.start.minute) /
+                                  60 *
+                                  rowHeight;
+                              final height = booking.durationMinutes / 60 * rowHeight;
+                              final color = booking.status == BookingStatus.booked
+                                  ? Colors.green
+                                  : Colors.orange;
+
+                              return Positioned(
+                                top: top,
+                                left: 3,
+                                right: 3,
+                                height: height < (18 * _weekZoom)
+                                    ? (18 * _weekZoom)
+                                    : height,
+                                child: InkWell(
+                                  onTap: () => showCancelDialog(booking),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: BoxDecoration(
+                                      color: color.withOpacity(0.55),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: Text(
+                                      booking.service,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 8.5,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMonthCalendarView() {
+    final firstOfMonth = DateTime(selectedDate.year, selectedDate.month, 1);
+    final startWeekday = firstOfMonth.weekday;
+    final gridStart = firstOfMonth.subtract(Duration(days: startWeekday - 1));
+    final days = List.generate(42, (i) => gridStart.add(Duration(days: i)));
+
+    return Column(
+      children: [
+        Row(
+          children: List.generate(7, (i) {
+            return Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    _weekdayShort(i + 1),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Colors.grey.shade700,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+              ),
+            );
+          }),
+        ),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: days.length,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 7,
+            mainAxisSpacing: 6,
+            crossAxisSpacing: 6,
+            childAspectRatio: 0.92,
+          ),
+          itemBuilder: (context, index) {
+            final day = days[index];
+            final isCurrentMonth = day.month == selectedDate.month;
+            final isSelected = _sameDay(day, selectedDate);
+            final dayBookings = myBookings
+                .where((b) => _sameDay(b.start, day))
+                .toList()
+              ..sort((a, b) => a.start.compareTo(b.start));
+
+            final visibleBars = dayBookings.take(2).toList();
+
+            return InkWell(
+              onTap: () async {
+                setState(() {
+                  selectedDate = DateTime(day.year, day.month, day.day);
+                  calendarMode = CalendarViewMode.day;
+                });
+                await _reloadDeviceCalendarEventsForVisibleRange();
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 4),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? Colors.indigo.withOpacity(0.12)
+                      : isCurrentMonth
+                      ? Colors.white
+                      : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isSelected ? Colors.indigo : Colors.black12,
+                  ),
+                ),
+                child: ClipRect(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${day.day}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 11,
+                          color: isCurrentMonth ? Colors.black : Colors.grey,
+                          height: 1.0,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      ...visibleBars.map((b) {
+                        final color =
+                        b.status == BookingStatus.booked ? Colors.green : Colors.orange;
+
+                        return Container(
+                          height: 6,
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 2),
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.90),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  bool _sameDay(DateTime a, DateTime b) {
+    return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  bool _sameDateTime(DateTime a, DateTime b) {
+    return _sameDay(a, b) && a.hour == b.hour && a.minute == b.minute;
+  }
+
+  String _formatDate(DateTime d) {
+    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+  }
+
+  String _shortDate(DateTime d) {
+    return '${d.day}.${d.month}';
+  }
+
+  String _weekdayShort(int weekday) {
+    const map = ['Pn', 'Wt', 'Śr', 'Cz', 'Pt', 'Sb', 'Nd'];
+    return map[weekday - 1];
+  }
+
+  String _monthName(int month) {
+    const names = [
+      'Styczeń',
+      'Luty',
+      'Marzec',
+      'Kwiecień',
+      'Maj',
+      'Czerwiec',
+      'Lipiec',
+      'Sierpień',
+      'Wrzesień',
+      'Październik',
+      'Listopad',
+      'Grudzień',
+    ];
+    return names[month - 1];
+  }
+}
+
+extension FirstOrNullExtension<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
+}

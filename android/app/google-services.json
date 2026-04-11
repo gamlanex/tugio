@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "897972952717",
+    "project_id": "tugio-5838a",
+    "storage_bucket": "tugio-5838a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:897972952717:android:1b5f0272f6f425182dccc4",
+        "android_client_info": {
+          "package_name": "com.example.test_1"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "897972952717-3olfd3jr0ta3bpjs8d3edt3uoumegcc0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.test_1",
+            "certificate_hash": "310eb1ceae8cf2d4389ad4c03e5489f75d1f9f18"
+          }
+        },
+        {
+          "client_id": "897972952717-tgucdacutbi3cknoe5njtqh6ei7lorth.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBeBIug72U7GlfGNQ89Sndum8gKjyVgFHE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "897972952717-tgucdacutbi3cknoe5njtqh6ei7lorth.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
