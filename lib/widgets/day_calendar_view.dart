@@ -11,6 +11,8 @@ class DayCalendarView extends StatelessWidget {
   final List<String> freeSlots;
   final List<String> confirmationSlots;
   final int slotDurationMinutes;
+  /// Pracownicy dostępni na dany slot (np. ['Krysia', 'Basia']).
+  final Map<String, List<String>> slotStaff;
   /// Callback wywoływany gdy użytkownik tapnie wolny slot.
   /// Jeśli null, slot jest wyświetlany ale nie jest klikalny.
   final void Function(String slot)? onSlotTap;
@@ -27,6 +29,7 @@ class DayCalendarView extends StatelessWidget {
     this.freeSlots = const [],
     this.confirmationSlots = const [],
     this.slotDurationMinutes = 60,
+    this.slotStaff = const {},
     this.onSlotTap,
     this.viewHeight = 520,
   });
@@ -103,6 +106,7 @@ class DayCalendarView extends StatelessWidget {
       final height = slotDurationMinutes / 60 * hourRowHeight;
       final showLabel = height >= 36;
       final showHint = height >= 52;
+      final staff = slotStaff[slot] ?? []; // lista pracowników na ten slot
 
       result.add(
         Positioned(
@@ -164,7 +168,25 @@ class DayCalendarView extends StatelessWidget {
                                     height: 1.1,
                                   ),
                                 ),
-                                if (showHint)
+                                if (staff.isNotEmpty && showLabel)
+                                  Text(
+                                    staff.length == 1
+                                        ? staff.first
+                                        : staff.length == 2
+                                            ? '${staff[0]} · ${staff[1]}'
+                                            : '${staff[0]}, +${staff.length - 1}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 9.5,
+                                      fontWeight: FontWeight.w600,
+                                      color: isConfirmation
+                                          ? Colors.orange.shade700
+                                          : Colors.blue.shade700,
+                                      height: 1.2,
+                                    ),
+                                  )
+                                else if (showHint)
                                   Text(
                                     isConfirmation
                                         ? 'Wyślij prośbę'
@@ -279,9 +301,11 @@ class DayCalendarView extends StatelessWidget {
                   child: Container(
                     height: totalHeight,
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF9FAFD),
+                      color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.black12),
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.outlineVariant,
+                      ),
                     ),
                     child: Stack(
                       children: [
@@ -298,7 +322,7 @@ class DayCalendarView extends StatelessWidget {
                               decoration: BoxDecoration(
                                 border: Border(
                                   top: BorderSide(
-                                    color: Colors.grey.shade300,
+                                    color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
                                     width: 1,
                                   ),
                                 ),

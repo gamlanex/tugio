@@ -1,5 +1,12 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
+import 'utils/app_theme.dart';
+
+// Globalny notifier dla trybu ciemnego/jasnego
+final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+
+// Globalny notifier dla trybu danych: true = Mock, false = API
+final useMockNotifier = ValueNotifier<bool>(true);
 
 void main() {
   runApp(const TugioApp());
@@ -10,15 +17,16 @@ class TugioApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Tugio',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.indigo,
-        scaffoldBackgroundColor: const Color(0xFFF6F7FB),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeModeNotifier,
+      builder: (_, mode, __) => MaterialApp(
+        title: 'Tugio',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light,
+        darkTheme: AppTheme.dark,
+        themeMode: mode,
+        home: const LoginScreen(),
       ),
-      home: const LoginScreen(),
     );
   }
 }

@@ -44,12 +44,27 @@ final List<ServiceProvider> mockProviders = [
     address: 'ul. Marszałkowska 10, Warszawa',
     lat: 52.2297,
     lng: 21.0122,
-    // natychmiastowe (niebieskie)
     slots: ['09:00', '10:00', '13:00', '17:00'],
-    // wymagające potwierdzenia (pomarańczowe) — koloryzacja, modelowanie
     confirmationSlots: ['11:30', '15:00'],
+    slotStaff: {
+      '09:00': ['Krysia', 'Basia', 'Bogdan'],
+      '10:00': ['Basia', 'Bogdan'],
+      '11:30': ['Krysia'],
+      '13:00': ['Marek', 'Krysia'],
+      '15:00': ['Basia'],
+      '17:00': ['Krysia', 'Marek', 'Basia', 'Bogdan'],
+    },
     isSubscribed: true,
     rating: 4.8,
+    description:
+        'Doświadczony fryzjer z ponad 15-letnim stażem. Specjalizuje się w nowoczesnych cięciach, koloryzacji i stylizacji. Pracuje z najlepszymi produktami Wella i L\'Oréal Professional. Zapraszam do swojego klimatycznego zakładu w centrum Warszawy.',
+    phone: '+48 601 234 567',
+    website: 'fryzjer-kowalski.pl',
+    openingHours: {
+      'Pon–Pt': '9:00–19:00',
+      'Sobota': '9:00–15:00',
+      'Niedziela': 'Nieczynne',
+    },
   ),
   ServiceProvider(
     id: 'provider_2',
@@ -62,6 +77,15 @@ final List<ServiceProvider> mockProviders = [
     confirmationSlots: ['10:30', '14:30'],
     isSubscribed: true,
     rating: 4.5,
+    description:
+        'Elegancki salon urody w sercu Nowego Światu. Oferujemy pełen zakres usług fryzjerskich i kosmetycznych. Nasz zespół to certyfikowani specjaliści regularnie podnoszący kwalifikacje na międzynarodowych szkoleniach.',
+    phone: '+48 22 555 0001',
+    website: 'salon-anna.pl',
+    openingHours: {
+      'Pon–Pt': '8:00–20:00',
+      'Sobota': '9:00–17:00',
+      'Niedziela': 'Nieczynne',
+    },
   ),
   ServiceProvider(
     id: 'provider_3',
@@ -70,12 +94,18 @@ final List<ServiceProvider> mockProviders = [
     address: 'ul. Puławska 50, Warszawa',
     lat: 52.2056,
     lng: 21.0084,
-    // sesje terapeutyczne — natychmiastowe
     slots: ['12:30', '15:00'],
-    // konsultacje i terapia par — wymagają potwierdzenia
     confirmationSlots: ['09:00', '10:30', '18:00'],
     isSubscribed: true,
     rating: 4.9,
+    description:
+        'Dr Anna Nowak — psycholog kliniczny z 12-letnim doświadczeniem. Specjalizacja: terapia poznawczo-behawioralna, terapia par, wsparcie w kryzysie. Przyjmuję dorosłych i młodzież. Gabinet przystosowany dla osób z niepełnosprawnością ruchową.',
+    phone: '+48 789 456 123',
+    openingHours: {
+      'Pon, Śr, Pt': '9:00–18:00',
+      'Wt, Czw': '12:00–20:00',
+      'Sobota': 'Na życzenie',
+    },
   ),
   ServiceProvider(
     id: 'provider_4',
@@ -86,8 +116,23 @@ final List<ServiceProvider> mockProviders = [
     lng: 21.0132,
     slots: ['07:00', '17:00', '19:00'],
     confirmationSlots: ['08:00', '18:00'],
+    slotStaff: {
+      '07:00': ['Kort 2'],
+      '08:00': ['Kort 1', 'Kort 3'],
+      '17:00': ['Kort 1', 'Kort 2', 'Kort 3'],
+      '18:00': ['Kort 1'],
+      '19:00': ['Kort 2', 'Kort 3'],
+    },
     isSubscribed: true,
     rating: 4.7,
+    description:
+        'Certyfikowany trener personalny i dietetyk sportowy. Pracuję z klientami na wszystkich poziomach zaawansowania — od osób zaczynających przygodę z fitnessem po sportowców wyczynowych. Treningi prowadzone w nowoczesnym centrum FitZone lub dojazd do klienta.',
+    phone: '+48 512 789 000',
+    website: 'fitzone.pl',
+    openingHours: {
+      'Pon–Pt': '6:00–21:00',
+      'Sob–Ndz': '8:00–16:00',
+    },
   ),
 ];
 

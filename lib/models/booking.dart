@@ -16,6 +16,11 @@ class Booking {
   /// Kiedy rezerwacja weszła w stan [BookingStatus.pending]
   final DateTime? pendingSince;
 
+  /// Imię/nazwa pracownika wybranego przy rezerwacji (np. 'Krysia')
+  final String? staffName;
+  /// ID usługodawcy — pozwala wyświetlić szczegóły przy tapnięciu rezerwacji
+  final String? providerId;
+
   Booking({
     required this.id,
     required this.service,
@@ -26,6 +31,8 @@ class Booking {
     this.importedFromDeviceCalendar = false,
     this.isAllDay = false,
     this.pendingSince,
+    this.staffName,
+    this.providerId,
   });
 
   DateTime get end => start.add(Duration(minutes: durationMinutes));

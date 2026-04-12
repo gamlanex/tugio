@@ -131,7 +131,7 @@ class WeekCalendarView extends StatelessWidget {
                           ? Colors.indigo.withOpacity(0.15)
                           : selected
                               ? Colors.indigo.withOpacity(0.08)
-                              : const Color(0xFFF4F5F9),
+                              : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.4),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
                         color: isToday
@@ -229,9 +229,11 @@ class WeekCalendarView extends StatelessWidget {
                       child: Container(
                         margin: const EdgeInsets.symmetric(horizontal: 2),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF9FAFD),
+                          color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.black12),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
                         ),
                         child: Stack(
                           fit: StackFit.expand,
@@ -247,7 +249,7 @@ class WeekCalendarView extends StatelessWidget {
                                   decoration: BoxDecoration(
                                     border: Border(
                                       top: BorderSide(
-                                          color: Colors.grey.shade300,
+                                          color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5),
                                           width: 0.8),
                                     ),
                                   ),

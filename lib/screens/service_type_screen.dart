@@ -124,7 +124,7 @@ class _TypeCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(radius),
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(radius),
           boxShadow: [
             BoxShadow(

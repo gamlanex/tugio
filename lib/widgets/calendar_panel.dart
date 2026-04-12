@@ -33,6 +33,13 @@ class CalendarPanel extends StatelessWidget {
   final VoidCallback? onTodayPressed;
   /// Sloty wymagające potwierdzenia — pokazywane jako pomarańczowe.
   final List<String> confirmationSlots;
+  /// Pracownicy dostępni na dany slot — widoczne w widoku dnia.
+  final Map<String, List<String>> slotStaff;
+  /// Czy pokazywać dostępne sloty rezerwacji.
+  /// false = tryb "tylko mój kalendarz" — sloty są ukryte.
+  final bool showSlots;
+  /// Callback przełącznika widoczności slotów.
+  final VoidCallback? onToggleSlots;
 
   const CalendarPanel({
     super.key,
@@ -57,6 +64,9 @@ class CalendarPanel extends StatelessWidget {
     this.onSlotTap,
     this.onTodayPressed,
     this.confirmationSlots = const [],
+    this.slotStaff = const {},
+    this.showSlots = true,
+    this.onToggleSlots,
   });
 
   List<DateTime> get _weekDays {
@@ -66,10 +76,19 @@ class CalendarPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamiczna wysokość widoku — 62% wysokości ekranu,
-    // min 360px (mały telefon), max 800px (duży monitor).
-    final screenH = MediaQuery.sizeOf(context).height;
-    final viewHeight = (screenH * 0.62).clamp(360.0, 800.0);
+    // Dynamiczna wysokość widoku.
+    // W landscape ekran jest krótki — używamy większego % i niższego minimum.
+    final size = MediaQuery.sizeOf(context);
+    final isLandscape = size.width > size.height;
+    final screenH = size.height;
+    final viewHeight = isLandscape
+        ? (screenH * 0.88).clamp(240.0, 800.0)
+        : (screenH * 0.62).clamp(360.0, 800.0);
+
+    // Gdy showSlots = false — przekazujemy puste listy do widoków kalendarza
+    final effectiveSlots = showSlots ? freeSlots : const <String>[];
+    final effectiveConfirmation = showSlots ? confirmationSlots : const <String>[];
+    final effectiveStaff = showSlots ? slotStaff : const <String, List<String>>{};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -82,6 +101,8 @@ class CalendarPanel extends StatelessWidget {
           onPrevious: onPreviousDate,
           onNext: onNextDate,
           onToday: onTodayPressed,
+          showSlots: showSlots,
+          onToggleSlots: onToggleSlots,
         ),
         const SizedBox(height: 12),
         if (calendarMode == CalendarViewMode.day)
@@ -96,11 +117,12 @@ class CalendarPanel extends StatelessWidget {
               zoom: dayZoom,
               scrollController: dayScrollController,
               onBookingTap: onBookingTap,
-              freeSlots: freeSlots,
-              confirmationSlots: confirmationSlots,
+              freeSlots: effectiveSlots,
+              confirmationSlots: effectiveConfirmation,
               slotDurationMinutes: slotDurationMinutes,
+              slotStaff: effectiveStaff,
               viewHeight: viewHeight,
-              onSlotTap: onSlotTap != null
+              onSlotTap: showSlots && onSlotTap != null
                   ? (slot) => onSlotTap!(slot, selectedDate)
                   : null,
             ),
@@ -119,11 +141,11 @@ class CalendarPanel extends StatelessWidget {
               scrollController: weekScrollController,
               onBookingTap: onBookingTap,
               onDayTap: onDayTap,
-              freeSlots: freeSlots,
-              confirmationSlots: confirmationSlots,
+              freeSlots: effectiveSlots,
+              confirmationSlots: effectiveConfirmation,
               slotDurationMinutes: slotDurationMinutes,
               viewHeight: viewHeight,
-              onSlotTap: onSlotTap,
+              onSlotTap: showSlots ? onSlotTap : null,
             ),
           ),
         if (calendarMode == CalendarViewMode.month)
@@ -135,8 +157,8 @@ class CalendarPanel extends StatelessWidget {
               bookings: bookings,
               onDayTap: onDayTap,
               maxHeight: viewHeight,
-              freeSlots: freeSlots,
-              confirmationSlots: confirmationSlots,
+              freeSlots: effectiveSlots,
+              confirmationSlots: effectiveConfirmation,
               slotDurationMinutes: slotDurationMinutes,
             ),
           ),
@@ -153,6 +175,8 @@ class _CalendarToolbar extends StatelessWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback? onToday;
+  final bool showSlots;
+  final VoidCallback? onToggleSlots;
 
   const _CalendarToolbar({
     required this.calendarMode,
@@ -162,6 +186,8 @@ class _CalendarToolbar extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     this.onToday,
+    this.showSlots = true,
+    this.onToggleSlots,
   });
 
   /// Czy dzień dzisiejszy jest widoczny w bieżącym widoku.
@@ -199,35 +225,66 @@ class _CalendarToolbar extends StatelessWidget {
           isToday: _isTodayVisible,
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: SegmentedButton<CalendarViewMode>(
-            style: ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              padding: WidgetStateProperty.all(
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-              ),
-              textStyle: WidgetStateProperty.all(
-                const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+        Row(
+          children: [
+            // ── Przełącznik widok dnia/tygodnia/miesiąca ──────
+            Expanded(
+              child: SegmentedButton<CalendarViewMode>(
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  padding: WidgetStateProperty.all(
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+                  ),
+                  textStyle: WidgetStateProperty.all(
+                    const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                segments: const [
+                  ButtonSegment(
+                    value: CalendarViewMode.day,
+                    label: Text('Dzień', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  ButtonSegment(
+                    value: CalendarViewMode.week,
+                    label: Text('Tydz.', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                  ButtonSegment(
+                    value: CalendarViewMode.month,
+                    label: Text('Mies.', maxLines: 1, overflow: TextOverflow.ellipsis),
+                  ),
+                ],
+                selected: {calendarMode},
+                onSelectionChanged: (value) => onModeChanged(value.first),
               ),
             ),
-            segments: const [
-              ButtonSegment(
-                value: CalendarViewMode.day,
-                label: Text('Dzień', maxLines: 1, overflow: TextOverflow.ellipsis),
+            // ── Toggle: pokaż/ukryj sloty rezerwacji ──────────
+            const SizedBox(width: 8),
+            Tooltip(
+              message: showSlots ? 'Ukryj sloty rezerwacji' : 'Pokaż sloty rezerwacji',
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                decoration: BoxDecoration(
+                  color: showSlots
+                      ? Theme.of(context).colorScheme.primaryContainer
+                      : Theme.of(context).colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: IconButton(
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onToggleSlots,
+                  icon: Icon(
+                    showSlots
+                        ? Icons.event_available_rounded
+                        : Icons.event_busy_rounded,
+                    size: 20,
+                    color: showSlots
+                        ? Theme.of(context).colorScheme.onPrimaryContainer
+                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  ),
+                ),
               ),
-              ButtonSegment(
-                value: CalendarViewMode.week,
-                label: Text('Tydz.', maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-              ButtonSegment(
-                value: CalendarViewMode.month,
-                label: Text('Mies.', maxLines: 1, overflow: TextOverflow.ellipsis),
-              ),
-            ],
-            selected: {calendarMode},
-            onSelectionChanged: (value) => onModeChanged(value.first),
-          ),
+            ),
+          ],
         ),
       ],
     );

@@ -4,17 +4,30 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../models/provider.dart';
 import '../models/booking.dart';
 import '../models/calendar_view_mode.dart';
-import '../data/mock_data.dart';
+import '../models/service_option.dart';
+import '../repositories/booking_repository.dart';
+import '../repositories/mock_booking_repository.dart';
+import '../repositories/mock_provider_repository.dart';
+import '../repositories/provider_repository.dart';
 import '../services/auth_service.dart';
+import '../services/calendar_sync_service.dart';
 import '../services/device_calendar_service.dart';
-import '../services/google_calendar_service.dart';
+import '../services/google_calendar_service.dart' show GoogleCalendarNotSignedInException;
 import '../services/ics_import_service.dart';
 import '../utils/date_helpers.dart';
+import '../utils/provider_avatar.dart';
+import '../main.dart' show themeModeNotifier, useMockNotifier;
+import '../repositories/http_booking_repository.dart';
+import '../repositories/http_provider_repository.dart';
+import '../widgets/booking_bottom_sheet.dart';
+import '../widgets/booking_detail_sheet.dart';
 import '../widgets/section_card.dart';
+import '../widgets/staff_picker_sheet.dart';
 import '../widgets/calendar_panel.dart';
 import 'login_screen.dart';
 import 'subscribed_providers_screen.dart';
 import 'service_type_screen.dart';
+import 'provider_detail_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -24,15 +37,18 @@ class MainScreen extends StatefulWidget {
 }
 
 class _MainScreenState extends State<MainScreen> {
+  // ─── repozytoria (dynamicznie wybierane: Mock lub HTTP) ───
+  ProviderRepository _providerRepo = MockProviderRepository();
+  BookingRepository _bookingRepo = MockBookingRepository();
+
   // ─── lista usługodawców ───────────────────────────────────
-  final List<ServiceProvider> _providers =
-      mockProviders.where((p) => p.isSubscribed).toList();
+  final List<ServiceProvider> _providers = [];
 
   // ─── rezerwacje ───────────────────────────────────────────
   final List<Booking> _myBookings = [];
 
   // ─── aktualny wybór ───────────────────────────────────────
-  late ServiceProvider _selectedProvider;
+  ServiceProvider? _selectedProvider; // null podczas ładowania danych
   late DateTime _selectedDate;
   CalendarViewMode _calendarMode = CalendarViewMode.day;
 
@@ -52,17 +68,30 @@ class _MainScreenState extends State<MainScreen> {
   bool _providersExpanded = false;
   bool _bookingsExpanded = false;
 
+  // ─── widoczność slotów rezerwacji ─────────────────────────
+  bool _showSlots = true;
+
   // ─────────────────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    _selectedProvider = _providers.first;
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
-    _myBookings.addAll(initialBookings(_selectedDate));
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await _loadDeviceCalendarEvents();
+      await _loadInitialData();
     });
+  }
+
+  Future<void> _loadInitialData() async {
+    final providers = await _providerRepo.getSubscribed();
+    final bookings = await _bookingRepo.getInitial(_selectedDate);
+    if (!mounted) return;
+    setState(() {
+      _providers.addAll(providers);
+      _selectedProvider = _providers.first;
+      _myBookings.addAll(bookings);
+    });
+    await _loadDeviceCalendarEvents();
   }
 
   @override
@@ -77,51 +106,8 @@ class _MainScreenState extends State<MainScreen> {
     if (_deviceCalendarLoaded || _importInProgress) return;
     _importInProgress = true;
     try {
-      final from =
-          DateTime(_selectedDate.year, _selectedDate.month - 1, 1, 0, 0);
-      final to =
-          DateTime(_selectedDate.year, _selectedDate.month + 2, 0, 23, 59);
-
-      List<Booking> imported;
-
-      if (AuthService.instance.isSignedIn && !kIsWeb) {
-        // Zalogowany na mobilnym: pobierz z OBU źródeł i połącz
-        // Google Calendar API → eventy z zalogowanego konta (np. gmail)
-        // Systemowy kalendarz    → eventy ze WSZYSTKICH kont na telefonie (w tym konta służbowe)
-        final googleEvents =
-            await GoogleCalendarService.instance.fetchEvents(from, to);
-        List<Booking> deviceEvents = [];
-        try {
-          deviceEvents =
-              await DeviceCalendarService.instance.fetchEvents(from, to);
-        } on DeviceCalendarPermissionDeniedException {
-          // brak zgody na systemowy — używamy tylko Google
-        } catch (_) {}
-
-        // Deduplikacja: jeśli event z systemu ma taki sam tytuł i czas start
-        // co event z Google API — pomijamy duplikat
-        final googleKeys = <String>{};
-        for (final b in googleEvents) {
-          googleKeys.add('${b.service}|${b.start.toIso8601String()}');
-        }
-        final uniqueDevice = deviceEvents.where((b) {
-          final key = '${b.service}|${b.start.toIso8601String()}';
-          return !googleKeys.contains(key);
-        }).toList();
-
-        imported = [...googleEvents, ...uniqueDevice];
-      } else if (AuthService.instance.isSignedIn) {
-        // Web: tylko Google Calendar API
-        imported =
-            await GoogleCalendarService.instance.fetchEvents(from, to);
-      } else if (!kIsWeb) {
-        // Niezalogowany na mobilnym: systemowy kalendarz
-        imported =
-            await DeviceCalendarService.instance.fetchEvents(from, to);
-      } else {
-        imported = [];
-      }
-
+      final imported =
+          await CalendarSyncService.instance.fetchEvents(_selectedDate);
       if (mounted) {
         setState(() {
           _myBookings.removeWhere((b) => b.importedFromDeviceCalendar);
@@ -130,26 +116,8 @@ class _MainScreenState extends State<MainScreen> {
         });
       }
     } on GoogleCalendarNotSignedInException {
-      // Nie jesteśmy zalogowani — próbujemy device calendar (mobile)
-      if (!kIsWeb) {
-        try {
-          final from =
-              DateTime(_selectedDate.year, _selectedDate.month - 1, 1, 0, 0);
-          final to =
-              DateTime(_selectedDate.year, _selectedDate.month + 2, 0, 23, 59);
-          final imported =
-              await DeviceCalendarService.instance.fetchEvents(from, to);
-          if (mounted) {
-            setState(() {
-              _myBookings.removeWhere((b) => b.importedFromDeviceCalendar);
-              _myBookings.addAll(imported);
-              _deviceCalendarLoaded = true;
-            });
-          }
-        } on DeviceCalendarPermissionDeniedException {
-          // brak zgody — nie pokazuj błędu, po prostu brak importu
-        } catch (_) {}
-      }
+      // Nie jesteśmy zalogowani — CalendarSyncService obsługuje fallback
+      // do device calendar, więc tutaj tylko logujemy cicho
     } on DeviceCalendarPermissionDeniedException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,7 +126,6 @@ class _MainScreenState extends State<MainScreen> {
         );
       }
     } catch (e) {
-      // Pokaż błąd żeby łatwiej debugować
       debugPrint('Calendar sync error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -278,134 +245,129 @@ class _MainScreenState extends State<MainScreen> {
     final alreadyExists = _myBookings.any((b) => sameDateTime(b.start, start));
     if (alreadyExists) return;
 
-    // Czy tapnięty slot jest pomarańczowy (wymaga potwierdzenia)?
     final isConfirmationSlot =
-        _selectedProvider.confirmationSlots.contains(time);
+        _selectedProvider!.confirmationSlots.contains(time);
 
-    final chosenService = await showModalBottomSheet<_ServiceOption>(
+    // ── Krok 1: wybór pracownika (jeśli jest więcej niż jeden) ──
+    final staffList = _selectedProvider!.slotStaff[time] ?? [];
+    String? chosenStaff;
+
+    if (staffList.length == 1) {
+      chosenStaff = staffList.first;
+    } else if (staffList.length > 1) {
+      chosenStaff = await showModalBottomSheet<String>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => StaffPickerSheet(
+          staffList: staffList,
+          time: time,
+          providerName: _selectedProvider!.name,
+        ),
+      );
+      if (chosenStaff == null || !mounted) return;
+    }
+
+    // ── Krok 2: wybór usługi ─────────────────────────────────
+    final chosenService = await showModalBottomSheet<ServiceOption>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => _BookingBottomSheet(
-        provider: _selectedProvider,
+      builder: (ctx) => BookingBottomSheet(
+        provider: _selectedProvider!,
         time: time,
         day: day,
+        staffName: chosenStaff,
       ),
     );
 
     if (chosenService != null && mounted) {
       _createBooking(time, day, chosenService,
-          forceConfirmation: isConfirmationSlot);
+          forceConfirmation: isConfirmationSlot,
+          staffName: chosenStaff);
     }
   }
 
-  void _createBooking(String time, DateTime day, _ServiceOption service,
-      {bool forceConfirmation = false}) {
+  Future<void> _createBooking(String time, DateTime day, ServiceOption service,
+      {bool forceConfirmation = false, String? staffName}) async {
     final parts = time.split(':');
     final start = DateTime(
       day.year, day.month, day.day,
       int.parse(parts[0]), int.parse(parts[1]),
     );
 
-    // Pending jeśli: slot jest pomarańczowy LUB wybrana usługa wymaga potwierdzenia
     final isPending = forceConfirmation || service.requiresConfirmation;
     final now = DateTime.now();
 
-    setState(() {
-      _myBookings.add(
-        Booking(
-          id: '${_selectedProvider.id}_${start.millisecondsSinceEpoch}',
-          service: service.name,
-          start: start,
-          durationMinutes: service.durationMinutes,
-          status: isPending ? BookingStatus.pending : BookingStatus.booked,
-          note: isPending ? 'Oczekuje na potwierdzenie' : null,
-          pendingSince: isPending ? now : null,
-        ),
-      );
-      _bookingsExpanded = true;
-    });
+    final booking = Booking(
+      id: '${_selectedProvider!.id}_${start.millisecondsSinceEpoch}',
+      service: service.name,
+      start: start,
+      durationMinutes: service.durationMinutes,
+      status: isPending ? BookingStatus.pending : BookingStatus.booked,
+      note: isPending ? 'Oczekuje na potwierdzenie' : null,
+      pendingSince: isPending ? now : null,
+      staffName: staffName,
+      providerId: _selectedProvider!.id,
+    );
 
+    // Wyślij do API — czekamy na potwierdzenie
+    try {
+      await _bookingRepo.create(booking);
+    } catch (e) {
+      debugPrint('BookingRepository.create error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Błąd tworzenia rezerwacji: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+      return; // nie dodajemy lokalnie jeśli API odrzuciło
+    }
+
+    // API potwierdziło — aktualizujemy UI
+    if (mounted) {
+      setState(() {
+        _myBookings.add(booking);
+        _bookingsExpanded = true;
+      });
+    }
   }
 
   Future<void> _showCancelDialog(Booking booking) async {
-    // Eventy zaimportowane z kalendarza (Google Calendar / .ics) —
-    // nie można ich odwoływać z poziomu aplikacji.
-    if (booking.importedFromDeviceCalendar) {
-      await showDialog(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: Row(
-            children: [
-              Icon(Icons.event_outlined,
-                  color: Colors.indigo.shade400, size: 22),
-              const SizedBox(width: 10),
-              const Flexible(child: Text('Event z kalendarza')),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                booking.service,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w700, fontSize: 15),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                booking.timeText,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-              ),
-              const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(10),
-                  border:
-                      Border.all(color: Colors.amber.shade200, width: 1),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline,
-                        size: 16, color: Colors.amber.shade800),
-                    const SizedBox(width: 8),
-                    const Expanded(
-                      child: Text(
-                        'Ten event pochodzi z Twojego Google Calendar. '
-                        'Aby go usunąć, edytuj go bezpośrednio w kalendarzu.',
-                        style: TextStyle(fontSize: 12.5),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            FilledButton(
-              style:
-                  FilledButton.styleFrom(backgroundColor: Colors.indigo),
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
+    // Znajdź dostawcę powiązanego z rezerwacją
+    final provider = booking.providerId != null
+        ? _providers.firstWhere(
+            (p) => p.id == booking.providerId,
+            orElse: () => _selectedProvider!,
+          )
+        : _selectedProvider!;
 
-    // Własna rezerwacja — normalny dialog anulowania
+    await showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => BookingDetailSheet(
+        booking: booking,
+        provider: booking.importedFromDeviceCalendar ? null : provider,
+        onCancel: booking.importedFromDeviceCalendar
+            ? null
+            : () async {
+                Navigator.pop(ctx);
+                await _confirmCancel(booking);
+              },
+      ),
+    );
+  }
+
+  Future<void> _confirmCancel(Booking booking) async {
     final controller = TextEditingController();
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Odwołać rezerwację?'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -425,7 +387,7 @@ class _MainScreenState extends State<MainScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Anuluj'),
+            child: const Text('Zostaw'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
@@ -437,19 +399,38 @@ class _MainScreenState extends State<MainScreen> {
     );
 
     if (result == true && mounted) {
-      setState(() {
-        booking.note = controller.text.trim();
-        _myBookings.removeWhere((b) => b.id == booking.id);
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            controller.text.trim().isEmpty
-                ? 'Rezerwacja odwołana'
-                : 'Rezerwacja odwołana: ${controller.text.trim()}',
+      // Wyślij DELETE do API — czekamy na potwierdzenie
+      try {
+        await _bookingRepo.cancel(booking.id);
+      } catch (e) {
+        debugPrint('BookingRepository.cancel error: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Błąd anulowania rezerwacji: $e'),
+              backgroundColor: Colors.red.shade700,
+            ),
+          );
+        }
+        return; // nie usuwamy lokalnie jeśli API odrzuciło
+      }
+
+      // API potwierdziło — aktualizujemy UI
+      if (mounted) {
+        setState(() {
+          booking.note = controller.text.trim();
+          _myBookings.removeWhere((b) => b.id == booking.id);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              controller.text.trim().isEmpty
+                  ? 'Rezerwacja odwołana'
+                  : 'Rezerwacja odwołana: ${controller.text.trim()}',
+            ),
           ),
-        ),
-      );
+        );
+      }
     }
   }
 
@@ -503,7 +484,7 @@ class _MainScreenState extends State<MainScreen> {
       MaterialPageRoute(
         builder: (_) => SubscribedProvidersScreen(
           providers: _providers,
-          selectedProvider: _selectedProvider,
+          selectedProvider: _selectedProvider!,
           selectedDate: _selectedDate,
           bookings: _myBookings,
           onProviderSelected: (provider) {
@@ -542,6 +523,51 @@ class _MainScreenState extends State<MainScreen> {
     );
   }
 
+  /// Przełącza między danymi Mock a prawdziwym API i przeładowuje dane.
+  Future<void> _toggleDataSource() async {
+    final switchToApi = useMockNotifier.value; // true = teraz mock → idziemy na API
+    useMockNotifier.value = !switchToApi;
+
+    setState(() {
+      if (switchToApi) {
+        _providerRepo = HttpProviderRepository();
+        _bookingRepo = HttpBookingRepository();
+      } else {
+        _providerRepo = MockProviderRepository();
+        _bookingRepo = MockBookingRepository();
+      }
+      // Czyścimy stan — zaraz przeładujemy z nowego źródła
+      _providers.clear();
+      _myBookings.clear();
+      _selectedProvider = null;
+      _deviceCalendarLoaded = false;
+    });
+
+    try {
+      await _loadInitialData();
+    } catch (e) {
+      if (!mounted) return;
+      // Coś poszło nie tak z API — wróć do mocków
+      useMockNotifier.value = true;
+      setState(() {
+        _providerRepo = MockProviderRepository();
+        _bookingRepo = MockBookingRepository();
+        _providers.clear();
+        _myBookings.clear();
+        _selectedProvider = null;
+        _deviceCalendarLoaded = false;
+      });
+      await _loadInitialData();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Błąd połączenia z API: $e\nPrzywrócono tryb Mock.'),
+          backgroundColor: Colors.red.shade700,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
   Future<void> _handleSignOut() async {
     await AuthService.instance.signOut();
     if (mounted) {
@@ -554,12 +580,18 @@ class _MainScreenState extends State<MainScreen> {
   // ─── build ───────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    // Dane ładowane async — pokaż spinner zanim się załadują
+    if (_selectedProvider == null) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final provider = _selectedProvider!;
     final user = AuthService.instance.currentUser;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
-        backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
         title: SvgPicture.asset('assets/images/Tugio.svg', height: 34),
@@ -594,41 +626,117 @@ class _MainScreenState extends State<MainScreen> {
             icon: const Icon(Icons.sync),
             onPressed: _reloadDeviceCalendarEvents,
           ),
-          PopupMenuButton<String>(
-            icon: CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.indigo.shade100,
-              backgroundImage: user?.photoUrl != null
-                  ? NetworkImage(user!.photoUrl!)
-                  : null,
-              child: user?.photoUrl == null
-                  ? Icon(Icons.person, size: 18, color: Colors.indigo.shade600)
-                  : null,
-            ),
-            itemBuilder: (_) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text(
-                  user?.displayName ?? user?.email ?? 'Zalogowany',
-                  style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 13),
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'signout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, size: 18),
-                    SizedBox(width: 8),
-                    Text('Wyloguj'),
+          // Nasłuchuje obu notifierów jednocześnie
+          ValueListenableBuilder<ThemeMode>(
+            valueListenable: themeModeNotifier,
+            builder: (_, themeMode, __) =>
+                ValueListenableBuilder<bool>(
+              valueListenable: useMockNotifier,
+              builder: (_, isMock, __) {
+                final isDark = themeMode == ThemeMode.dark;
+                return PopupMenuButton<String>(
+                  icon: CircleAvatar(
+                    radius: 16,
+                    backgroundColor: Colors.indigo.shade100,
+                    backgroundImage: user?.photoUrl != null
+                        ? NetworkImage(user!.photoUrl!)
+                        : null,
+                    child: user?.photoUrl == null
+                        ? Icon(Icons.person,
+                            size: 18, color: Colors.indigo.shade600)
+                        : null,
+                  ),
+                  itemBuilder: (_) => [
+                    PopupMenuItem(
+                      enabled: false,
+                      child: Text(
+                        user?.displayName ?? user?.email ?? 'Zalogowany',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600, fontSize: 13),
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    // ── Przełącznik skórki ──────────────────────
+                    PopupMenuItem(
+                      value: 'theme',
+                      child: Row(
+                        children: [
+                          Icon(
+                            isDark
+                                ? Icons.light_mode_outlined
+                                : Icons.dark_mode_outlined,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(isDark ? 'Jasna skórka' : 'Ciemna skórka'),
+                        ],
+                      ),
+                    ),
+                    // ── Przełącznik Mock / API ──────────────────
+                    PopupMenuItem(
+                      value: 'datasource',
+                      child: Row(
+                        children: [
+                          Icon(
+                            isMock
+                                ? Icons.cloud_outlined
+                                : Icons.storage_rounded,
+                            size: 18,
+                            color: isMock
+                                ? Colors.orange.shade700
+                                : Colors.green.shade700,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  isMock
+                                      ? 'Przełącz na API'
+                                      : 'Przełącz na Mock',
+                                  style: const TextStyle(fontSize: 13),
+                                ),
+                                Text(
+                                  isMock ? 'Teraz: dane lokalne' : 'Teraz: API',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: isMock
+                                        ? Colors.orange.shade700
+                                        : Colors.green.shade700,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    const PopupMenuItem(
+                      value: 'signout',
+                      child: Row(
+                        children: [
+                          Icon(Icons.logout, size: 18),
+                          SizedBox(width: 8),
+                          Text('Wyloguj'),
+                        ],
+                      ),
+                    ),
                   ],
-                ),
-              ),
-            ],
-            onSelected: (value) {
-              if (value == 'signout') _handleSignOut();
-            },
+                  onSelected: (value) {
+                    if (value == 'signout') _handleSignOut();
+                    if (value == 'theme') {
+                      themeModeNotifier.value =
+                          isDark ? ThemeMode.light : ThemeMode.dark;
+                    }
+                    if (value == 'datasource') _toggleDataSource();
+                  },
+                );
+              },
+            ),
           ),
           const SizedBox(width: 4),
         ],
@@ -641,7 +749,7 @@ class _MainScreenState extends State<MainScreen> {
               // ── Wybór usługodawcy (zwijany) ────────────────
               _CollapsibleSection(
                 title: 'Moi usługodawcy',
-                subtitle: _selectedProvider.name,
+                subtitle: provider.name,
                 expanded: _providersExpanded,
                 onToggle: () => setState(
                     () => _providersExpanded = !_providersExpanded),
@@ -672,11 +780,15 @@ class _MainScreenState extends State<MainScreen> {
                   onDayTap: _handleDayTap,
                   onPreviousDate: () => _shiftDate(-1),
                   onNextDate: () => _shiftDate(1),
-                  freeSlots: _selectedProvider.slots,
-                  confirmationSlots: _selectedProvider.confirmationSlots,
-                  slotDurationMinutes: _selectedProvider.slotDurationMinutes,
+                  freeSlots: provider.slots,
+                  confirmationSlots: provider.confirmationSlots,
+                  slotDurationMinutes: provider.slotDurationMinutes,
+                  slotStaff: provider.slotStaff,
                   onSlotTap: _handleSlotTap,
                   onTodayPressed: _handleTodayPressed,
+                  showSlots: _showSlots,
+                  onToggleSlots: () =>
+                      setState(() => _showSlots = !_showSlots),
                 ),
               ),
               const SizedBox(height: 16),
@@ -690,10 +802,19 @@ class _MainScreenState extends State<MainScreen> {
   // ─── zawartość wyboru usługodawcy — grid z poziomym scrollem ───
   Widget _buildProviderSelectorContent() {
     // Karta usługodawcy
-    Widget providerCard(ServiceProvider provider) {
-      final selected = provider.id == _selectedProvider.id;
+    Widget providerCard(ServiceProvider p) {
+      final selected = p.id == _selectedProvider?.id;
       return InkWell(
-        onTap: () => setState(() => _selectedProvider = provider),
+        onTap: () => setState(() => _selectedProvider = p),
+        onDoubleTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ProviderDetailScreen(
+              provider: p,
+              userId: AuthService.instance.currentUser?.email,
+            ),
+          ),
+        ),
         borderRadius: BorderRadius.circular(12),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
@@ -701,54 +822,64 @@ class _MainScreenState extends State<MainScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: selected
-                ? Colors.indigo.withOpacity(0.1)
-                : const Color(0xFFF4F5F9),
+                ? Theme.of(context).colorScheme.primary.withOpacity(0.1)
+                : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: selected ? Colors.indigo : Colors.transparent,
+              color: selected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
               width: 1.4,
             ),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              ProviderAvatar(serviceType: p.serviceType, radius: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
               Text(
-                provider.name,
+                p.name,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: selected ? Colors.indigo : Colors.black87,
+                  color: selected
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.onSurface,
                 ),
               ),
               const SizedBox(height: 2),
               Row(
                 children: [
-                  Icon(Icons.category_outlined,
-                      size: 10, color: Colors.grey.shade600),
-                  const SizedBox(width: 3),
                   Expanded(
                     child: Text(
-                      provider.serviceType,
+                      p.serviceType,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                           fontSize: 10.5, color: Colors.grey.shade600),
                     ),
                   ),
-                  if (provider.rating != null) ...[
+                  if (p.rating != null) ...[
                     const SizedBox(width: 4),
                     Icon(Icons.star,
                         size: 10, color: Colors.amber.shade600),
                     Text(
-                      provider.rating!.toStringAsFixed(1),
+                      p.rating!.toStringAsFixed(1),
                       style: TextStyle(
                           fontSize: 10.5, color: Colors.grey.shade700),
                     ),
                   ],
                 ],
+              ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -879,6 +1010,23 @@ class _MainScreenState extends State<MainScreen> {
                               style: const TextStyle(
                                   fontSize: 13, fontWeight: FontWeight.w700),
                             ),
+                            if (booking.staffName != null) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(Icons.person_rounded,
+                                      size: 11, color: Colors.teal.shade600),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    booking.staffName!,
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.teal.shade700,
+                                        fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ],
                             const SizedBox(height: 2),
                             Text(
                               '${formatDate(booking.start)} · ${booking.timeText}',
@@ -1001,7 +1149,7 @@ class _CollapsibleSection extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
@@ -1039,8 +1187,8 @@ class _CollapsibleSection extends StatelessWidget {
                   AnimatedRotation(
                     turns: expanded ? 0.5 : 0,
                     duration: const Duration(milliseconds: 200),
-                    child: const Icon(Icons.keyboard_arrow_down,
-                        color: Colors.black45),
+                    child: Icon(Icons.keyboard_arrow_down,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.45)),
                   ),
                 ],
               ),
@@ -1206,514 +1354,4 @@ class _OptionTile extends StatelessWidget {
       ),
     );
   }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Bottom sheet rezerwacji — duży, prawie pełnoekranowy
-// ─────────────────────────────────────────────────────────────────────────────
-class _BookingBottomSheet extends StatefulWidget {
-  final ServiceProvider provider;
-  final String time;
-  final DateTime day;
-
-  const _BookingBottomSheet({
-    required this.provider,
-    required this.time,
-    required this.day,
-  });
-
-  @override
-  State<_BookingBottomSheet> createState() => _BookingBottomSheetState();
-}
-
-class _BookingBottomSheetState extends State<_BookingBottomSheet> {
-  int _selectedServiceIndex = 0;
-
-  // Mock usługi dla danego usługodawcy z opisami i cenami
-  List<_ServiceOption> get _services {
-    switch (widget.provider.serviceType) {
-      case 'Fryzjer':
-        return [
-          _ServiceOption('Strzyżenie damskie', 'Mycie, strzyżenie i stylizacja włosów.', 120, 60),
-          _ServiceOption('Strzyżenie męskie', 'Klasyczne lub nowoczesne strzyżenie.', 70, 30),
-          _ServiceOption('Koloryzacja', 'Pełna koloryzacja lub odrosty z pielęgnacją.', 250, 120,
-              requiresConfirmation: true),
-          _ServiceOption('Modelowanie', 'Blow-dry, fale lub prostowanie.', 90, 45,
-              requiresConfirmation: true),
-        ];
-      case 'Psycholog':
-        return [
-          _ServiceOption('Konsultacja indywidualna', 'Pierwsza wizyta, diagnoza i omówienie celów terapii.', 200, 60,
-              requiresConfirmation: true),
-          _ServiceOption('Sesja terapeutyczna', 'Regularna sesja terapii indywidualnej.', 180, 50),
-          _ServiceOption('Terapia par', 'Sesja dla par — komunikacja i relacje.', 300, 90,
-              requiresConfirmation: true),
-        ];
-      case 'Trener personalny':
-        return [
-          _ServiceOption('Trening personalny', 'Indywidualny plan ćwiczeń dostosowany do Twoich celów.', 150, 60),
-          _ServiceOption('Analiza postawy', 'Ocena biomechaniki i korygowanie wad postawy.', 120, 45,
-              requiresConfirmation: true),
-          _ServiceOption('Konsultacja dietetyczna', 'Plan żywieniowy wspierający Twój trening.', 100, 40),
-        ];
-      default:
-        return [
-          _ServiceOption('Wizyta standardowa', 'Standardowa wizyta u ${widget.provider.name}.', 150, 60),
-          _ServiceOption('Wizyta pilna', 'Szybka konsultacja w trybie pilnym.', 200, 30,
-              requiresConfirmation: true),
-        ];
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final services = _services;
-    final selected = services[_selectedServiceIndex];
-    final endTime = _addMinutes(widget.time, selected.durationMinutes);
-
-    return DraggableScrollableSheet(
-      initialChildSize: 0.92,
-      minChildSize: 0.5,
-      maxChildSize: 0.97,
-      builder: (ctx, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: Color(0xFFF6F7FB),
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              // ── uchwyt ──────────────────────────────────────
-              Padding(
-                padding: const EdgeInsets.only(top: 12, bottom: 4),
-                child: Center(
-                  child: Container(
-                    width: 40, height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-              ),
-
-              // ── treść scrollowana ────────────────────────────
-              Expanded(
-                child: ListView(
-                  controller: scrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-                  children: [
-                    // Nagłówek — usługodawca
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        boxShadow: [
-                          BoxShadow(
-                            blurRadius: 12,
-                            color: Colors.black.withOpacity(0.05),
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 52, height: 52,
-                            decoration: BoxDecoration(
-                              color: Colors.indigo.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            child: const Icon(Icons.store_rounded,
-                                color: Colors.indigo, size: 28),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(widget.provider.name,
-                                    style: const TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w700)),
-                                const SizedBox(height: 3),
-                                Text(widget.provider.serviceType,
-                                    style: TextStyle(
-                                        fontSize: 13,
-                                        color: Colors.grey.shade600)),
-                                if (widget.provider.rating != null) ...[
-                                  const SizedBox(height: 4),
-                                  Row(
-                                    children: [
-                                      Icon(Icons.star_rounded,
-                                          color: Colors.amber.shade600,
-                                          size: 15),
-                                      const SizedBox(width: 3),
-                                      Text(
-                                        widget.provider.rating!
-                                            .toStringAsFixed(1),
-                                        style: const TextStyle(
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // Termin
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.indigo.withOpacity(0.07),
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: Colors.indigo.withOpacity(0.2)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.calendar_today_rounded,
-                              color: Colors.indigo, size: 18),
-                          const SizedBox(width: 10),
-                          Text(formatDate(widget.day),
-                              style: const TextStyle(
-                                  fontWeight: FontWeight.w600)),
-                          const SizedBox(width: 20),
-                          const Icon(Icons.access_time_rounded,
-                              color: Colors.indigo, size: 18),
-                          const SizedBox(width: 8),
-                          Text(
-                            '${widget.time} – $endTime',
-                            style: const TextStyle(
-                                fontWeight: FontWeight.w600),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Nagłówek sekcji usług
-                    const Text('Wybierz usługę',
-                        style: TextStyle(
-                            fontSize: 15, fontWeight: FontWeight.w700)),
-                    const SizedBox(height: 10),
-
-                    // Lista usług
-                    ...services.asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final svc = entry.value;
-                      final isSelected = i == _selectedServiceIndex;
-                      return GestureDetector(
-                        onTap: () =>
-                            setState(() => _selectedServiceIndex = i),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          margin: const EdgeInsets.only(bottom: 10),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: isSelected
-                                ? Colors.indigo.withOpacity(0.07)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                              color: isSelected
-                                  ? Colors.indigo
-                                  : Colors.black12,
-                              width: isSelected ? 1.5 : 1,
-                            ),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Radio indicator
-                              Container(
-                                width: 20, height: 20,
-                                margin: const EdgeInsets.only(top: 1),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: isSelected
-                                        ? Colors.indigo
-                                        : Colors.black26,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: isSelected
-                                    ? Center(
-                                        child: Container(
-                                          width: 10, height: 10,
-                                          decoration: const BoxDecoration(
-                                            shape: BoxShape.circle,
-                                            color: Colors.indigo,
-                                          ),
-                                        ),
-                                      )
-                                    : null,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(svc.name,
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                                fontSize: 14,
-                                                color: isSelected
-                                                    ? Colors.indigo.shade800
-                                                    : Colors.black87,
-                                              )),
-                                        ),
-                                        Text(
-                                          '${svc.price} zł',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            fontSize: 15,
-                                            color: isSelected
-                                                ? Colors.indigo
-                                                : Colors.black87,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(svc.description,
-                                        style: TextStyle(
-                                            fontSize: 12.5,
-                                            color: Colors.grey.shade600,
-                                            height: 1.4)),
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        Icon(Icons.timer_outlined,
-                                            size: 13,
-                                            color: Colors.grey.shade500),
-                                        const SizedBox(width: 4),
-                                        Text(
-                                          '${svc.durationMinutes} min',
-                                          style: TextStyle(
-                                              fontSize: 11.5,
-                                              color: Colors.grey.shade500),
-                                        ),
-                                        const SizedBox(width: 10),
-                                        // Badge: natychmiastowa / wymaga potwierdzenia
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: svc.requiresConfirmation
-                                                ? Colors.orange.withOpacity(0.12)
-                                                : Colors.green.withOpacity(0.12),
-                                            borderRadius: BorderRadius.circular(6),
-                                          ),
-                                          child: Row(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Icon(
-                                                svc.requiresConfirmation
-                                                    ? Icons.hourglass_top_rounded
-                                                    : Icons.bolt_rounded,
-                                                size: 11,
-                                                color: svc.requiresConfirmation
-                                                    ? Colors.orange.shade700
-                                                    : Colors.green.shade700,
-                                              ),
-                                              const SizedBox(width: 3),
-                                              Text(
-                                                svc.requiresConfirmation
-                                                    ? 'Wymaga potwierdzenia'
-                                                    : 'Natychmiastowa',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  fontWeight: FontWeight.w600,
-                                                  color: svc.requiresConfirmation
-                                                      ? Colors.orange.shade700
-                                                      : Colors.green.shade700,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }),
-                    const SizedBox(height: 8),
-
-                    // Adres
-                    Row(
-                      children: [
-                        Icon(Icons.location_on_outlined,
-                            size: 15, color: Colors.grey.shade500),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(widget.provider.address,
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey.shade500)),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 80), // miejsce na przycisk
-                  ],
-                ),
-              ),
-
-              // ── przyciski (przyklejone na dole) ─────────────
-              Container(
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  12,
-                  16,
-                  // viewInsets = klawiatura, padding.bottom = pasek nawigacji
-                  16 +
-                      MediaQuery.of(context).viewInsets.bottom +
-                      MediaQuery.of(context).padding.bottom,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  boxShadow: [
-                    BoxShadow(
-                      blurRadius: 16,
-                      color: Colors.black.withOpacity(0.07),
-                      offset: const Offset(0, -4),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Podsumowanie ceny
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(selected.name,
-                                  style: const TextStyle(
-                                      fontSize: 12, color: Colors.black54),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis),
-                              Text('${selected.price} zł',
-                                  style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.indigo)),
-                            ],
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            Icon(Icons.timer_outlined,
-                                size: 14,
-                                color: Colors.grey.shade500),
-                            const SizedBox(width: 4),
-                            Text('${selected.durationMinutes} min',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500)),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    // Przyciski obok siebie na pełnej szerokości
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              side: const BorderSide(color: Colors.black26),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14)),
-                            ),
-                            onPressed: () => Navigator.pop(ctx, null),
-                            child: const Text('Anuluj',
-                                style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.black54)),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          flex: 2,
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: selected.requiresConfirmation
-                                  ? Colors.orange.shade700
-                                  : Colors.indigo,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14)),
-                            ),
-                            onPressed: () => Navigator.pop(ctx, selected),
-                            icon: Icon(
-                              selected.requiresConfirmation
-                                  ? Icons.send_rounded
-                                  : Icons.check_rounded,
-                              size: 18,
-                            ),
-                            label: Text(
-                              selected.requiresConfirmation
-                                  ? 'Wyślij prośbę'
-                                  : 'Zarezerwuj',
-                              style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w700),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  String _addMinutes(String time, int minutes) {
-    final parts = time.split(':');
-    final dt = DateTime(0, 0, 0, int.parse(parts[0]), int.parse(parts[1]));
-    final end = dt.add(Duration(minutes: minutes));
-    return '${end.hour.toString().padLeft(2, '0')}:${end.minute.toString().padLeft(2, '0')}';
-  }
-}
-
-class _ServiceOption {
-  final String name;
-  final String description;
-  final int price;
-  final int durationMinutes;
-  /// true = usługa wymaga potwierdzenia ze strony właściciela
-  final bool requiresConfirmation;
-  const _ServiceOption(
-      this.name, this.description, this.price, this.durationMinutes,
-      {this.requiresConfirmation = false});
 }

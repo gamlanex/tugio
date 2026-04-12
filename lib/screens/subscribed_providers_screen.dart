@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../models/provider.dart';
 import '../models/booking.dart';
+import '../services/auth_service.dart';
 import '../utils/date_helpers.dart';
+import '../utils/provider_avatar.dart';
+import 'provider_detail_screen.dart';
 
 class SubscribedProvidersScreen extends StatefulWidget {
   final List<ServiceProvider> providers;
@@ -133,39 +136,52 @@ class _SubscribedProvidersScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── nagłówek karty usługodawcy ───────────────
+                // single tap = rozwiń/zwiń, double tap = pełna strona
                 InkWell(
                   onTap: () => setState(() {
                     _picked = isExpanded ? null : provider;
                   }),
+                  onDoubleTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ProviderDetailScreen(
+                        provider: provider,
+                        userId: AuthService.instance.currentUser?.email,
+                      ),
+                    ),
+                  ),
                   borderRadius: BorderRadius.circular(18),
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          backgroundColor:
-                              Colors.indigo.withOpacity(0.12),
+                        ProviderAvatar(
+                          serviceType: provider.serviceType,
                           radius: 24,
-                          child: Text(
-                            provider.name[0],
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.indigo.shade700,
-                            ),
-                          ),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                provider.name,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                ),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      provider.name,
+                                      style: const TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  Tooltip(
+                                    message: 'Dwukrotnie dotknij aby zobaczyć szczegóły',
+                                    child: Icon(Icons.info_outline_rounded,
+                                        size: 14,
+                                        color: Colors.grey.shade400),
+                                  ),
+                                ],
                               ),
                               const SizedBox(height: 3),
                               Text(

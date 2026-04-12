@@ -126,15 +126,15 @@ class MonthCalendarView extends StatelessWidget {
                                       ? Colors.orange.withOpacity(0.04)
                                       : Colors.blue.withOpacity(0.04))
                                   : isCurrentMonth
-                                      ? Colors.white
-                                      : Colors.grey.shade50,
+                                      ? Theme.of(context).colorScheme.surface
+                                      : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: isToday
                             ? Colors.indigo
                             : isSelected
                                 ? Colors.indigo.withOpacity(0.5)
-                                : Colors.black12,
+                                : Theme.of(context).colorScheme.outlineVariant,
                         width: isToday ? 1.6 : 1,
                       ),
                     ),
@@ -144,65 +144,68 @@ class MonthCalendarView extends StatelessWidget {
                       children: [
                         // ── treść komórki z paddingiem ───────
                         Positioned.fill(
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              4, 4,
-                              hasFreeSlots && isCurrentMonth ? 14 : 4,
-                              3,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Numer dnia (bieżący dzień = pogrubiony, indigo — bez kółka)
-                                Text(
-                                  '${day.day}',
-                                  maxLines: 1,
-                                  style: TextStyle(
-                                    fontWeight: (isToday || isSelected)
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
-                                    fontSize: 11,
-                                    color: isToday
-                                        ? Colors.indigo
-                                        : isCurrentMonth
-                                            ? Colors.black87
-                                            : Colors.grey,
-                                    height: 1.0,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                // Paseczki rezerwacji (wysokość proporcjonalna do czasu trwania)
-                                ...visibleBars.map((b) {
-                                  final isPending =
-                                      b.status == BookingStatus.pending;
-                                  final color =
-                                      b.status == BookingStatus.booked
-                                          ? Colors.green
-                                          : Colors.orange;
-                                  final barH =
-                                      (b.durationMinutes / 60.0 * 7.0)
-                                          .clamp(4.0, 15.0);
-                                  return Container(
-                                    height: barH,
-                                    margin: const EdgeInsets.only(bottom: 2),
-                                    decoration: BoxDecoration(
-                                      // pending = brak wypełnienia, tylko delikatna ramka
-                                      color: isPending
-                                          ? Colors.transparent
-                                          : color.withOpacity(0.85),
-                                      borderRadius:
-                                          BorderRadius.circular(999),
-                                      border: isPending
-                                          ? Border.all(
-                                              color: Colors.orange
-                                                  .withOpacity(0.6),
-                                              width: 0.8,
-                                            )
-                                          : null,
+                          child: ClipRect(
+                            child: Padding(
+                              padding: EdgeInsets.fromLTRB(
+                                4, 3,
+                                hasFreeSlots && isCurrentMonth ? 12 : 4,
+                                2,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Numer dnia
+                                  Text(
+                                    '${day.day}',
+                                    maxLines: 1,
+                                    style: TextStyle(
+                                      fontWeight: (isToday || isSelected)
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      fontSize: 11,
+                                      color: isToday
+                                          ? Colors.indigo
+                                          : isCurrentMonth
+                                              ? Theme.of(context).colorScheme.onSurface
+                                              : Theme.of(context).colorScheme.onSurface.withOpacity(0.35),
+                                      height: 1.1,
                                     ),
-                                  );
-                                }),
-                              ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  // Paseczki rezerwacji
+                                  ...visibleBars.map((b) {
+                                    final isPending =
+                                        b.status == BookingStatus.pending;
+                                    final color =
+                                        b.status == BookingStatus.booked
+                                            ? Colors.green
+                                            : Colors.orange;
+                                    // Paski max 11px żeby zmieścić dwa + odstępy
+                                    final barH =
+                                        (b.durationMinutes / 60.0 * 6.0)
+                                            .clamp(4.0, 11.0);
+                                    return Container(
+                                      height: barH,
+                                      margin: const EdgeInsets.only(bottom: 2),
+                                      decoration: BoxDecoration(
+                                        color: isPending
+                                            ? Colors.transparent
+                                            : color.withOpacity(0.85),
+                                        borderRadius:
+                                            BorderRadius.circular(999),
+                                        border: isPending
+                                            ? Border.all(
+                                                color: Colors.orange
+                                                    .withOpacity(0.6),
+                                                width: 0.8,
+                                              )
+                                            : null,
+                                      ),
+                                    );
+                                  }),
+                                ],
+                              ),
                             ),
                           ),
                         ),

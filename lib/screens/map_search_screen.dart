@@ -346,8 +346,9 @@ class _ProviderDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.of(context).padding.bottom;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomInset),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
