@@ -153,7 +153,7 @@ class MonthCalendarView extends StatelessWidget {
                               ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
+                                mainAxisSize: MainAxisSize.max,
                                 children: [
                                   // Numer dnia
                                   Text(
@@ -172,38 +172,43 @@ class MonthCalendarView extends StatelessWidget {
                                       height: 1.1,
                                     ),
                                   ),
-                                  const SizedBox(height: 2),
-                                  // Paseczki rezerwacji
-                                  ...visibleBars.map((b) {
-                                    final isPending =
-                                        b.status == BookingStatus.pending;
-                                    final color =
-                                        b.status == BookingStatus.booked
-                                            ? Colors.green
-                                            : Colors.orange;
-                                    // Paski max 11px żeby zmieścić dwa + odstępy
-                                    final barH =
-                                        (b.durationMinutes / 60.0 * 6.0)
-                                            .clamp(4.0, 11.0);
-                                    return Container(
-                                      height: barH,
-                                      margin: const EdgeInsets.only(bottom: 2),
-                                      decoration: BoxDecoration(
-                                        color: isPending
-                                            ? Colors.transparent
-                                            : color.withOpacity(0.85),
-                                        borderRadius:
-                                            BorderRadius.circular(999),
-                                        border: isPending
-                                            ? Border.all(
-                                                color: Colors.orange
-                                                    .withOpacity(0.6),
-                                                width: 0.8,
-                                              )
-                                            : null,
+                                  // Paseczki rezerwacji — Flexible zapobiega overflow
+                                  if (visibleBars.isNotEmpty)
+                                    Flexible(
+                                      child: Padding(
+                                        padding: const EdgeInsets.only(top: 2),
+                                        child: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: visibleBars.map((b) {
+                                            final isPending =
+                                                b.status == BookingStatus.pending;
+                                            final color =
+                                                b.status == BookingStatus.booked
+                                                    ? Colors.green
+                                                    : Colors.orange;
+                                            return Container(
+                                              height: 5,
+                                              margin: const EdgeInsets.only(bottom: 2),
+                                              decoration: BoxDecoration(
+                                                color: isPending
+                                                    ? Colors.transparent
+                                                    : color.withOpacity(0.85),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                border: isPending
+                                                    ? Border.all(
+                                                        color: Colors.orange
+                                                            .withOpacity(0.6),
+                                                        width: 0.8,
+                                                      )
+                                                    : null,
+                                              ),
+                                            );
+                                          }).toList(),
+                                        ),
                                       ),
-                                    );
-                                  }),
+                                    ),
                                 ],
                               ),
                             ),

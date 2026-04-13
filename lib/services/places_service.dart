@@ -24,15 +24,17 @@ class PlacesService {
   static Future<List<ServiceProvider>> searchNearby({
     required double lat,
     required double lng,
-    required String serviceType,
+    required String? serviceType,
     double radiusMeters = 3000,
   }) async {
-    final tag = _osmTags[serviceType] ?? serviceType.toLowerCase();
+    // null → szukamy wszystkich usługodawców (kategoria "Inne")
+    final query = serviceType ?? 'usługi';
+    final tag = _osmTags[query] ?? query.toLowerCase();
 
     // Nominatim search — szuka po nazwie kategorii w pobliżu
     final uri = Uri.parse(
       'https://nominatim.openstreetmap.org/search'
-      '?q=${Uri.encodeComponent(serviceType)}'
+      '?q=${Uri.encodeComponent(query)}'
       '&format=json'
       '&addressdetails=1'
       '&limit=15'
@@ -55,8 +57,8 @@ class PlacesService {
           return data.map((r) {
             return ServiceProvider(
               id: 'osm_${r['place_id']}',
-              name: r['display_name']?.toString().split(',').first ?? serviceType,
-              serviceType: serviceType,
+              name: r['display_name']?.toString().split(',').first ?? query,
+              serviceType: serviceType ?? 'Inne',
               address: _formatAddress(r['address']),
               lat: double.tryParse(r['lat'].toString()) ?? lat,
               lng: double.tryParse(r['lon'].toString()) ?? lng,
@@ -71,7 +73,7 @@ class PlacesService {
     }
 
     // ─── fallback: dane demo (zawsze działa) ──────────────
-    return _mockResults(serviceType, lat, lng);
+    return _mockResults(serviceType ?? 'Inne', lat, lng);
   }
 
   static String _formatAddress(dynamic address) {
@@ -87,7 +89,8 @@ class PlacesService {
       ['09:00', '10:00', '11:00', '14:00', '15:00', '16:00'];
 
   static List<ServiceProvider> _mockResults(
-      String serviceType, double lat, double lng) {
+      String? serviceType, double lat, double lng) {
+    final effectiveType = serviceType ?? 'Inne';
     final names = <String, List<String>>{
       'Fryzjer': ['Studio Cuts', 'Fryzjer Excellent', 'Hair by Marta'],
       'Psycholog': ['Gabinet Psychologiczny', 'Centrum Terapii', 'Mind & Soul'],
@@ -99,14 +102,14 @@ class PlacesService {
       'Dietetyk': ['Dieta i Zdrowie', 'NutriExpert', 'Zdrowe Odżywianie'],
       'Masaż': ['Relax Studio', 'MasażExpert', 'Zen Massage'],
     };
-    final list =
-        names[serviceType] ?? ['$serviceType 1', '$serviceType 2', '$serviceType 3'];
+    final list = names[effectiveType] ??
+        ['$effectiveType 1', '$effectiveType 2', '$effectiveType 3'];
 
     return List.generate(list.length, (i) {
       return ServiceProvider(
-        id: 'demo_${serviceType}_$i',
+        id: 'demo_${effectiveType}_$i',
         name: list[i],
-        serviceType: serviceType,
+        serviceType: effectiveType,
         address: 'ul. Przykładowa ${i * 3 + 1}, Warszawa (demo)',
         lat: lat + (i - 1) * 0.006,
         lng: lng + (i - 1) * 0.006,

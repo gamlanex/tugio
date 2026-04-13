@@ -2,6 +2,15 @@ import 'package:flutter/material.dart';
 import '../models/booking.dart';
 import '../utils/date_helpers.dart';
 
+/// Opisuje pozycję rezerwacji w układzie kolumnowym (dla nakładających się eventów).
+class _EventLayout {
+  final Booking booking;
+  final int columnIndex;
+  final int totalColumns;
+
+  const _EventLayout(this.booking, this.columnIndex, this.totalColumns);
+}
+
 class DayCalendarView extends StatelessWidget {
   final DateTime selectedDate;
   final List<Booking> bookings;
@@ -74,6 +83,61 @@ class DayCalendarView extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  /// Oblicza układ kolumnowy dla nakładających się rezerwacji.
+  /// Każda rezerwacja dostaje [columnIndex] i [totalColumns] — pozwala
+  /// wyświetlić nakładające się eventy obok siebie zamiast jeden na drugim.
+  static List<_EventLayout> _computeEventLayouts(List<Booking> events) {
+    if (events.isEmpty) return [];
+
+    // Posortuj wg czasu początku
+    final sorted = List<Booking>.from(events)
+      ..sort((a, b) => a.start.compareTo(b.start));
+
+    // Dla każdego eventu wyznacz kolumnę — pierwsza wolna kolumna w danym czasie
+    final List<int> colEndMinutes = []; // kiedy dana kolumna jest wolna
+    final List<int> colAssignment = List.filled(sorted.length, 0);
+
+    for (int i = 0; i < sorted.length; i++) {
+      final startMin = sorted[i].start.hour * 60 + sorted[i].start.minute;
+      final endMin = startMin + sorted[i].durationMinutes.clamp(1, 24 * 60);
+
+      // Znajdź pierwszą wolną kolumnę
+      int col = 0;
+      while (col < colEndMinutes.length && colEndMinutes[col] > startMin) {
+        col++;
+      }
+      if (col == colEndMinutes.length) {
+        colEndMinutes.add(endMin);
+      } else {
+        colEndMinutes[col] = endMin;
+      }
+      colAssignment[i] = col;
+    }
+
+    // Dla każdego eventu oblicz totalColumns = maks. kolumna+1 wśród wszystkich
+    // eventów, które nakładają się z nim w czasie (= "szerokość grupy")
+    final List<int> totalCols = List.filled(sorted.length, 1);
+    for (int i = 0; i < sorted.length; i++) {
+      final aStart = sorted[i].start.hour * 60 + sorted[i].start.minute;
+      final aEnd = aStart + sorted[i].durationMinutes.clamp(1, 24 * 60);
+      int maxCol = colAssignment[i];
+      for (int j = 0; j < sorted.length; j++) {
+        if (i == j) continue;
+        final bStart = sorted[j].start.hour * 60 + sorted[j].start.minute;
+        final bEnd = bStart + sorted[j].durationMinutes.clamp(1, 24 * 60);
+        if (aStart < bEnd && aEnd > bStart) {
+          if (colAssignment[j] > maxCol) maxCol = colAssignment[j];
+        }
+      }
+      totalCols[i] = maxCol + 1;
+    }
+
+    return List.generate(
+      sorted.length,
+      (i) => _EventLayout(sorted[i], colAssignment[i], totalCols[i]),
     );
   }
 
@@ -335,107 +399,120 @@ class DayCalendarView extends StatelessWidget {
                         ..._buildSlotWidgets(freeSlots, timedBookings, hourRowHeight, isConfirmation: false),
                         ..._buildSlotWidgets(confirmationSlots, timedBookings, hourRowHeight, isConfirmation: true),
 
-                        // 3. Rezerwacje (NA WIERZCHU) ──────────────
-                        ...timedBookings.map((booking) {
-                          final startMinutes =
-                              (booking.start.hour - _startHour) * 60 +
-                                  booking.start.minute;
-                          final top = startMinutes / 60 * hourRowHeight;
-                          final rawHeight =
-                              booking.durationMinutes / 60 * hourRowHeight;
-                          final blockHeight =
-                              rawHeight < 34 ? 34.0 : rawHeight;
+                        // 3. Rezerwacje z układem kolumnowym (NA WIERZCHU) ───
+                        ..._computeEventLayouts(timedBookings).expand(
+                          (layout) sync* {
+                            final containerWidth =
+                                MediaQuery.sizeOf(context).width -
+                                    _timeColumnWidth -
+                                    32; // przybliżona szerokość kontenera
+                            const edgeMargin = 8.0;
+                            const colGap = 3.0;
+                            final usableWidth = containerWidth - edgeMargin * 2;
+                            final colWidth =
+                                (usableWidth - colGap * (layout.totalColumns - 1)) /
+                                    layout.totalColumns;
+                            final eventLeft = edgeMargin +
+                                layout.columnIndex * (colWidth + colGap);
 
-                          final isPending =
-                              booking.status == BookingStatus.pending;
-                          final color =
-                              booking.status == BookingStatus.booked
-                                  ? Colors.green
-                                  : Colors.orange;
+                            final startMinutes =
+                                (layout.booking.start.hour - _startHour) * 60 +
+                                    layout.booking.start.minute;
+                            final top = startMinutes / 60 * hourRowHeight;
+                            final rawHeight =
+                                layout.booking.durationMinutes / 60 * hourRowHeight;
+                            final blockHeight = rawHeight < 34 ? 34.0 : rawHeight;
 
-                          final showTime = blockHeight >= 52;
-                          final showStatus = blockHeight >= 68;
+                            final isPending =
+                                layout.booking.status == BookingStatus.pending;
+                            final color =
+                                layout.booking.status == BookingStatus.booked
+                                    ? Colors.green
+                                    : Colors.orange;
 
-                          return Positioned(
-                            top: top,
-                            left: 10,
-                            right: 10,
-                            height: blockHeight,
-                            child: InkWell(
-                              onTap: () => onBookingTap(booking),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  // pending = transparentne, tylko pomarańczowa ramka
-                                  color: isPending
-                                      ? Colors.transparent
-                                      : color.withOpacity(0.20),
-                                  borderRadius: BorderRadius.circular(14),
-                                  border: Border.all(
-                                    color: isPending
-                                        ? Colors.orange.withOpacity(0.7)
-                                        : color,
-                                    width: 1.0,
+                            final showTime = blockHeight >= 52;
+                            final showStatus = blockHeight >= 68;
+
+                            yield Positioned(
+                              top: top,
+                              left: eventLeft,
+                              width: colWidth,
+                              height: blockHeight,
+                              child: InkWell(
+                                onTap: () => onBookingTap(layout.booking),
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 7,
+                                    vertical: 5,
                                   ),
-                                ),
-                                child: ClipRect(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        booking.service,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                          fontSize: 12.5,
-                                          height: 1.0,
-                                        ),
-                                      ),
-                                      if (showTime) ...[
-                                        const SizedBox(height: 3),
+                                  decoration: BoxDecoration(
+                                    color: isPending
+                                        ? Colors.transparent
+                                        : color.withOpacity(0.20),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: isPending
+                                          ? Colors.orange.withOpacity(0.7)
+                                          : color,
+                                      width: 1.0,
+                                    ),
+                                  ),
+                                  child: ClipRect(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
                                         Text(
-                                          booking.timeText,
+                                          layout.booking.service,
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: const TextStyle(
-                                            fontSize: 11,
-                                            height: 1.0,
-                                          ),
-                                        ),
-                                      ],
-                                      if (showStatus) ...[
-                                        const SizedBox(height: 3),
-                                        Text(
-                                          isPending
-                                              ? 'Oczekuje'
-                                              : booking.status ==
-                                                      BookingStatus.booked
-                                                  ? 'Potwierdzona'
-                                                  : 'Inquiry',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: TextStyle(
-                                            fontSize: 10,
                                             fontWeight: FontWeight.w700,
-                                            color: color,
+                                            fontSize: 12.5,
                                             height: 1.0,
                                           ),
                                         ),
+                                        if (showTime) ...[
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            layout.booking.timeText,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              height: 1.0,
+                                            ),
+                                          ),
+                                        ],
+                                        if (showStatus) ...[
+                                          const SizedBox(height: 3),
+                                          Text(
+                                            isPending
+                                                ? 'Oczekuje'
+                                                : layout.booking.status ==
+                                                        BookingStatus.booked
+                                                    ? 'Potwierdzona'
+                                                    : 'Inquiry',
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w700,
+                                              color: color,
+                                              height: 1.0,
+                                            ),
+                                          ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          );
-                        }),
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ),

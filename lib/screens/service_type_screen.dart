@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
 import '../models/provider.dart';
+import '../models/service_type.dart';
+import '../repositories/service_type_repository.dart';
+import '../repositories/mock_service_type_repository.dart';
+import '../repositories/http_service_type_repository.dart';
+import '../widgets/cached_svg_icon.dart';
+import '../main.dart' show useMockNotifier;
 import 'map_search_screen.dart';
 
-class ServiceTypeScreen extends StatelessWidget {
+class ServiceTypeScreen extends StatefulWidget {
   final void Function(ServiceProvider) onProviderSubscribed;
 
   const ServiceTypeScreen({
@@ -10,26 +16,70 @@ class ServiceTypeScreen extends StatelessWidget {
     required this.onProviderSubscribed,
   });
 
-  static const List<_ServiceTypeItem> _types = [
-    _ServiceTypeItem('Fryzjer', Icons.content_cut, Colors.purple),
-    _ServiceTypeItem('Psycholog', Icons.psychology, Colors.teal),
-    _ServiceTypeItem('Trener personalny', Icons.fitness_center, Colors.orange),
-    _ServiceTypeItem('Dentysta', Icons.medical_services, Colors.blue),
-    _ServiceTypeItem('Kosmetyczka', Icons.spa, Colors.pink),
-    _ServiceTypeItem('Lekarz', Icons.local_hospital, Colors.red),
-    _ServiceTypeItem('Fizjoterapeuta', Icons.accessibility_new, Colors.green),
-    _ServiceTypeItem('Dietetyk', Icons.restaurant, Colors.amber),
-    _ServiceTypeItem('Masaż', Icons.self_improvement, Colors.indigo),
-  ];
+  @override
+  State<ServiceTypeScreen> createState() => _ServiceTypeScreenState();
+}
+
+class _ServiceTypeScreenState extends State<ServiceTypeScreen> {
+  late final ServiceTypeRepository _repo;
+  List<ServiceType> _types = [];
+  bool _loading = true;
+  String? _error;
+  String? _errorDetail;
+
+  @override
+  void initState() {
+    super.initState();
+    _repo = useMockNotifier.value
+        ? MockServiceTypeRepository()
+        : HttpServiceTypeRepository();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+      _errorDetail = null;
+    });
+    try {
+      final types = await _repo.getAll();
+      if (mounted) setState(() => _types = types);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Nie udało się pobrać kategorii.\nSprawdź połączenie.';
+          _errorDetail = e.toString();
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _openSearch(ServiceType type) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MapSearchScreen(
+          serviceType: type.isOther ? null : type.name,
+          serviceTypeLabel: type.name,
+          onProviderSubscribed: (provider) {
+            widget.onProviderSubscribed(provider);
+            Navigator.popUntil(context, (route) => route.isFirst);
+          },
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
         title: const Text('Wybierz typ usługi'),
         centerTitle: true,
-        backgroundColor: Colors.white,
         elevation: 0,
       ),
       body: OrientationBuilder(
@@ -43,53 +93,49 @@ class ServiceTypeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // ── Nagłówek ───────────────────────────────────
                 if (!isLandscape) ...[
                   const Text(
                     'Czego szukasz?',
                     style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                    ),
+                        fontSize: 20, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
+                  Text(
                     'Wybierz kategorię, a pokażemy Ci usługodawców w Twojej okolicy.',
                     style: TextStyle(
-                        fontSize: 13, color: Colors.black54, height: 1.4),
+                        fontSize: 13,
+                        color: cs.onSurface.withOpacity(0.55),
+                        height: 1.4),
                   ),
                   const SizedBox(height: 20),
                 ] else
                   const SizedBox(height: 8),
+
+                // ── Siatka ─────────────────────────────────────
                 Expanded(
-                  child: GridView.builder(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: crossAxisCount,
-                      mainAxisSpacing: 10,
-                      crossAxisSpacing: 10,
-                      childAspectRatio: childAspectRatio,
-                    ),
-                    itemCount: _types.length,
-                    itemBuilder: (context, index) {
-                      final item = _types[index];
-                      return _TypeCard(
-                        item: item,
-                        compact: isLandscape,
-                        onTap: () => Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MapSearchScreen(
-                              serviceType: item.label,
-                              onProviderSubscribed: (provider) {
-                                onProviderSubscribed(provider);
-                                Navigator.popUntil(
-                                    context, (route) => route.isFirst);
+                  child: _loading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _error != null
+                          ? _ErrorView(message: _error!, detail: _errorDetail, onRetry: _load)
+                          : GridView.builder(
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: crossAxisCount,
+                                mainAxisSpacing: 10,
+                                crossAxisSpacing: 10,
+                                childAspectRatio: childAspectRatio,
+                              ),
+                              itemCount: _types.length,
+                              itemBuilder: (context, index) {
+                                final type = _types[index];
+                                return _TypeCard(
+                                  type: type,
+                                  compact: isLandscape,
+                                  onTap: () => _openSearch(type),
+                                );
                               },
                             ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
                 ),
               ],
             ),
@@ -100,13 +146,15 @@ class ServiceTypeScreen extends StatelessWidget {
   }
 }
 
+// ── Karta kategorii ───────────────────────────────────────────────────────────
+
 class _TypeCard extends StatelessWidget {
-  final _ServiceTypeItem item;
+  final ServiceType type;
   final VoidCallback onTap;
   final bool compact;
 
   const _TypeCard({
-    required this.item,
+    required this.type,
     required this.onTap,
     this.compact = false,
   });
@@ -118,6 +166,7 @@ class _TypeCard extends StatelessWidget {
     final fontSize = compact ? 10.5 : 12.0;
     final gap = compact ? 6.0 : 10.0;
     final radius = compact ? 12.0 : 18.0;
+    final color = type.color;
 
     return InkWell(
       onTap: onTap,
@@ -137,20 +186,28 @@ class _TypeCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // ── Ikona SVG z cache (fallback: litera) ───────────
             Container(
               width: iconBoxSize,
               height: iconBoxSize,
               decoration: BoxDecoration(
-                color: item.color.withOpacity(0.12),
+                color: color.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(radius * 0.8),
               ),
-              child: Icon(item.icon, size: iconSize, color: item.color),
+              child: Center(
+                child: CachedSvgIcon(
+                  iconUrl: type.iconUrl,
+                  size: iconSize,
+                  color: color,
+                  fallbackLetter: type.initial,
+                ),
+              ),
             ),
             SizedBox(height: gap),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
-                item.label,
+                type.name,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -168,10 +225,63 @@ class _TypeCard extends StatelessWidget {
   }
 }
 
-class _ServiceTypeItem {
-  final String label;
-  final IconData icon;
-  final Color color;
+// ── Widok błędu z przyciskiem retry ──────────────────────────────────────────
 
-  const _ServiceTypeItem(this.label, this.icon, this.color);
+class _ErrorView extends StatelessWidget {
+  final String message;
+  final String? detail;
+  final VoidCallback onRetry;
+
+  const _ErrorView({required this.message, this.detail, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.cloud_off_rounded,
+                size: 48, color: cs.onSurface.withOpacity(0.3)),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: cs.onSurface.withOpacity(0.6),
+                  fontSize: 14,
+                  height: 1.5),
+            ),
+            if (detail != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cs.errorContainer.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  detail!,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: cs.onSurface.withOpacity(0.45),
+                      fontSize: 11,
+                      height: 1.4,
+                      fontFamily: 'monospace'),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Spróbuj ponownie'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

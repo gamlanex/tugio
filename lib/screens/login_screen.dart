@@ -1,8 +1,20 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// LoginScreen — ekran logowania
+//
+// Metody logowania:
+//  1. Email + hasło  → ApiAuthService (POST /auth/login)
+//  2. Google Sign-In → Google OAuth + ApiAuthService (POST /auth/google)
+//
+// Link "Zarejestruj się" otwiera RegisterScreen.
+// Na web: tylko tryb demo (Google Sign-In wymaga dodatkowej konfiguracji).
+// ─────────────────────────────────────────────────────────────────────────────
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/auth_service.dart';
-import 'main_screen.dart';
+import '../main.dart' show authStateNotifier, AuthState, useMockNotifier;
+import 'register_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -12,188 +24,309 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool _loading = true;
+  final _formKey = GlobalKey<FormState>();
+  final _emailCtr = TextEditingController();
+  final _passCtr = TextEditingController();
+
+  bool _loading = false;
+  bool _showPass = false;
   String? _error;
 
   @override
-  void initState() {
-    super.initState();
-    _tryAutoSignIn();
+  void dispose() {
+    _emailCtr.dispose();
+    _passCtr.dispose();
+    super.dispose();
   }
 
-  // Próbuje przywrócić poprzednią sesję bez ekranu wyboru konta
-  Future<void> _tryAutoSignIn() async {
-    // Na Web Google Sign-In wymaga dodatkowej konfiguracji —
-    // od razu pokazujemy ekran logowania bez próby auto-logowania.
-    if (kIsWeb) {
-      setState(() => _loading = false);
-      return;
-    }
-    final ok = await AuthService.instance.tryAutoSignIn();
-    if (ok && mounted) {
-      _navigateToMain();
-    } else if (mounted) {
-      setState(() => _loading = false);
-    }
+  // ── Logowanie email/hasło ──────────────────────────────────────────────────
+
+  Future<void> _loginWithEmail() async {
+    if (!_formKey.currentState!.validate()) return;
+    _setLoading(true);
+
+    final result = await AuthService.instance.signInWithEmail(
+      _emailCtr.text.trim(),
+      _passCtr.text,
+      useMock: useMockNotifier.value,
+    );
+    _handleResult(result);
   }
 
-  Future<void> _handleSignIn() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final user = await AuthService.instance.signIn();
-      if (user != null && mounted) {
-        _navigateToMain();
-      } else if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = 'Logowanie anulowane';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-          _error = 'Błąd logowania: $e';
-        });
-      }
+  // ── Logowanie Google ───────────────────────────────────────────────────────
+
+  Future<void> _loginWithGoogle() async {
+    _setLoading(true);
+    final result = await AuthService.instance
+        .signInWithGoogle(useMock: useMockNotifier.value);
+    _handleResult(result);
+  }
+
+  void _handleResult(AuthResult result) {
+    if (!mounted) return;
+    if (result.success) {
+      authStateNotifier.value = AuthState.authenticated;
+    } else {
+      setState(() {
+        _loading = false;
+        _error = result.error;
+      });
     }
   }
 
-  void _navigateToMain() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const MainScreen()),
+  void _setLoading(bool v) {
+    if (mounted) setState(() => _loading = v);
+  }
+
+  void _openRegister() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const RegisterScreen()),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Spacer(flex: 3),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 56),
 
-              // ── Logo ─────────────────────────────────────────
-              Center(
-                child: SvgPicture.asset(
-                  'assets/images/Tugio.svg',
-                  height: 64,
+                // ── Logo ──────────────────────────────────────────
+                Center(
+                  child: SvgPicture.asset('assets/images/Tugio.svg',
+                      height: 60),
                 ),
-              ),
-              const SizedBox(height: 24),
+                const SizedBox(height: 28),
 
-              // ── Tagline ──────────────────────────────────────
-              const Text(
-                'Zarezerwuj wizytę\nw kilka sekund',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w700,
-                  height: 1.3,
+                // ── Tagline ───────────────────────────────────────
+                const Text(
+                  'Zarezerwuj wizytę\nw kilka sekund',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3),
                 ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Zarządzaj swoimi rezerwacjami\nw jednym miejscu',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: Colors.black54),
-              ),
+                const SizedBox(height: 8),
+                Text(
+                  'Zarządzaj rezerwacjami w jednym miejscu',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: cs.onSurface.withOpacity(0.55)),
+                ),
 
-              const Spacer(flex: 2),
+                const SizedBox(height: 40),
 
-              // ── Przycisk logowania ───────────────────────────
-              if (_loading)
-                const Center(child: CircularProgressIndicator())
-              else ...[
-                OutlinedButton(
-                  onPressed: kIsWeb ? null : _handleSignIn,
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
+                // ── Formularz email ───────────────────────────────
+                if (!kIsWeb) ...[
+                  TextFormField(
+                    controller: _emailCtr,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon:
+                          const Icon(Icons.email_outlined, size: 20),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                     ),
-                    side: BorderSide(
-                      color: kIsWeb ? Colors.black12 : Colors.black26,
-                    ),
-                    backgroundColor: kIsWeb ? Colors.grey.shade100 : Colors.white,
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Podaj email';
+                      if (!v.contains('@')) return 'Nieprawidłowy email';
+                      return null;
+                    },
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.login,
-                          color: kIsWeb
-                              ? Colors.grey
-                              : Colors.indigo.shade600,
-                          size: 22),
-                      const SizedBox(width: 12),
-                      Text(
-                        kIsWeb
-                            ? 'Google Sign-In (tylko na urządzeniu)'
-                            : 'Zaloguj się przez Google',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
-                          color: kIsWeb ? Colors.grey : null,
-                        ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _passCtr,
+                    obscureText: !_showPass,
+                    decoration: InputDecoration(
+                      labelText: 'Hasło',
+                      prefixIcon:
+                          const Icon(Icons.lock_outline, size: 20),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                            _showPass
+                                ? Icons.visibility_off
+                                : Icons.visibility,
+                            size: 20),
+                        onPressed: () =>
+                            setState(() => _showPass = !_showPass),
                       ),
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                    ),
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Podaj hasło' : null,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Przycisk email ─────────────────────────────
+                  FilledButton(
+                    onPressed: _loading ? null : _loginWithEmail,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.indigo,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                    ),
+                    child: _loading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 2))
+                        : const Text('Zaloguj się',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600)),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // ── Separator ──────────────────────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                          child: Divider(
+                              color: cs.onSurface.withOpacity(0.2))),
+                      Padding(
+                        padding:
+                            const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text('lub',
+                            style: TextStyle(
+                                color: cs.onSurface.withOpacity(0.45),
+                                fontSize: 13)),
+                      ),
+                      Expanded(
+                          child: Divider(
+                              color: cs.onSurface.withOpacity(0.2))),
                     ],
                   ),
-                ),
+                  const SizedBox(height: 16),
 
-                // Na Web: przycisk demo zamiast Google Sign-In
+                  // ── Przycisk Google ────────────────────────────
+                  OutlinedButton(
+                    onPressed: _loading ? null : _loginWithGoogle,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      side: BorderSide(
+                          color: cs.onSurface.withOpacity(0.25)),
+                      backgroundColor: isDark
+                          ? cs.surfaceContainerHighest
+                          : Colors.white,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.login,
+                            color: Colors.indigo.shade600, size: 20),
+                        const SizedBox(width: 10),
+                        const Text('Zaloguj się przez Google',
+                            style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ],
+
+                // ── Tryb Web ──────────────────────────────────────
                 if (kIsWeb) ...[
-                  const SizedBox(height: 12),
                   ElevatedButton(
-                    onPressed: _navigateToMain,
+                    onPressed: () =>
+                        authStateNotifier.value = AuthState.authenticated,
                     style: ElevatedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       backgroundColor: Colors.indigo,
                       foregroundColor: Colors.white,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
+                          borderRadius: BorderRadius.circular(14)),
                     ),
                     child: const Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.play_arrow_rounded, size: 22),
                         SizedBox(width: 8),
-                        Text(
-                          'Wejdź w trybie demo',
-                          style: TextStyle(
-                              fontSize: 15, fontWeight: FontWeight.w600),
-                        ),
+                        Text('Wejdź w trybie demo',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600)),
                       ],
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Google Sign-In działa na urządzeniu mobilnym lub emulatorze.\nWeb wymaga dodatkowej konfiguracji Firebase.',
+                  Text(
+                    'Google Sign-In działa na urządzeniu mobilnym lub emulatorze.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11.5, color: Colors.black38),
+                    style: TextStyle(
+                        fontSize: 11.5,
+                        color: cs.onSurface.withOpacity(0.38)),
                   ),
                 ],
-              ],
 
-              // ── Błąd ────────────────────────────────────────
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.red, fontSize: 13),
-                ),
-              ],
+                // ── Błąd ──────────────────────────────────────────
+                if (_error != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: cs.errorContainer,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(_error!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                            color: cs.onErrorContainer, fontSize: 13)),
+                  ),
+                ],
 
-              const SizedBox(height: 56),
-            ],
+                const SizedBox(height: 32),
+
+                // ── Link rejestracja ──────────────────────────────
+                if (!kIsWeb)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text('Nie masz konta? ',
+                          style: TextStyle(
+                              color: cs.onSurface.withOpacity(0.6),
+                              fontSize: 14)),
+                      GestureDetector(
+                        onTap: _openRegister,
+                        child: const Text(
+                          'Zarejestruj się',
+                          style: TextStyle(
+                            color: Colors.indigo,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),

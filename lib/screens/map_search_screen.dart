@@ -7,12 +7,18 @@ import '../models/provider.dart';
 import '../services/places_service.dart';
 
 class MapSearchScreen extends StatefulWidget {
-  final String serviceType;
+  /// Typ usługi przekazywany do API (filtr). null = brak filtra (kategoria "Inne").
+  final String? serviceType;
+
+  /// Etykieta wyświetlana w AppBar — zawsze podana, nawet dla "Inne".
+  final String serviceTypeLabel;
+
   final void Function(ServiceProvider) onProviderSubscribed;
 
   const MapSearchScreen({
     super.key,
     required this.serviceType,
+    required this.serviceTypeLabel,
     required this.onProviderSubscribed,
   });
 
@@ -121,11 +127,9 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
       appBar: AppBar(
-        title: Text('Szukaj: ${widget.serviceType}'),
+        title: Text('Szukaj: ${widget.serviceTypeLabel}'),
         centerTitle: true,
-        backgroundColor: Colors.white,
         elevation: 0,
         actions: [
           IconButton(
@@ -165,7 +169,7 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                       margin: const EdgeInsets.all(24),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Theme.of(context).colorScheme.surface,
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(_error!,
@@ -203,10 +207,10 @@ class _MapSearchScreenState extends State<MapSearchScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
                   child: Text(
                     '${_results.length} wyników w pobliżu',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
-                      color: Colors.black54,
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
                     ),
                   ),
                 ),
@@ -267,7 +271,7 @@ class _ResultTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? Colors.indigo.withOpacity(0.08)
-              : Colors.white,
+              : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isSelected ? Colors.indigo : Colors.transparent,
@@ -310,7 +314,8 @@ class _ResultTile extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 11, color: Colors.grey.shade600),
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55)),
                   ),
                 ],
               ),
@@ -326,7 +331,8 @@ class _ResultTile extends StatelessWidget {
             ],
             const SizedBox(width: 8),
             Icon(Icons.chevron_right,
-                size: 20, color: Colors.grey.shade400),
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.35)),
           ],
         ),
       ),
@@ -346,8 +352,13 @@ class _ProviderDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final bottomInset = MediaQuery.of(context).padding.bottom;
-    return Padding(
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
       padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomInset),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -358,7 +369,7 @@ class _ProviderDetailSheet extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.black26,
+                color: cs.onSurface.withOpacity(0.2),
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -389,7 +400,7 @@ class _ProviderDetailSheet extends StatelessWidget {
                     const SizedBox(height: 3),
                     Text(provider.serviceType,
                         style: TextStyle(
-                            fontSize: 13, color: Colors.grey.shade600)),
+                            fontSize: 13, color: cs.onSurface.withOpacity(0.55))),
                     if (provider.rating != null) ...[
                       const SizedBox(height: 3),
                       Row(
@@ -418,7 +429,7 @@ class _ProviderDetailSheet extends StatelessWidget {
               Expanded(
                 child: Text(provider.address,
                     style: TextStyle(
-                        fontSize: 13, color: Colors.grey.shade700)),
+                        fontSize: 13, color: cs.onSurface.withOpacity(0.65))),
               ),
             ],
           ),
@@ -428,7 +439,7 @@ class _ProviderDetailSheet extends StatelessWidget {
             style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
-                color: Colors.grey.shade700),
+                color: cs.onSurface.withOpacity(0.65)),
           ),
           const SizedBox(height: 8),
           Wrap(

@@ -1,77 +1,163 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// AuthService — Google Sign-In + Google Calendar scope
+// AuthService — fasada logowania
 //
-// SETUP — Android:
-//   1. google-services.json w android/app/
-//   2. SHA-1 zarejestrowany w Firebase Console
-//   3. Google Sign-In włączony w Firebase Authentication
+// Łączy trzy warstwy:
+//  • Google Sign-In     → dostęp do Google Calendar (OAuth access token)
+//  • ApiAuthService     → JWT dla backendu Tugio (email/hasło lub Google)
+//  • LocalAuthService   → odcisk palca i PIN (szybkie odblokowanie)
 //
-// SETUP — Web (aby Google Sign-In działał w przeglądarce):
-//   1. Firebase Console → Authentication → Sign-in method → Google
-//   2. Rozwiń "Web SDK configuration" → skopiuj "Web client ID"
-//      (wygląda jak: 123456789-abc...xyz.apps.googleusercontent.com)
-//   3. Wklej do web/index.html jako:
-//      <meta name="google-signin-client_id" content="TWÓJ_WEB_CLIENT_ID">
-//   4. Dodaj http://localhost do "Authorized JavaScript origins"
-//      w Google Cloud Console → APIs & Services → Credentials → Web client
+// Publiczny interfejs jest kompatybilny wstecz — istniejący kod (main_screen,
+// calendar_sync_service, subscribed_providers_screen) działa bez zmian.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:google_sign_in/google_sign_in.dart';
+import 'api_auth_service.dart';
+import 'local_auth_service.dart';
+import '../models/app_user.dart';
+
+export 'api_auth_service.dart' show AuthResult;
+export 'local_auth_service.dart' show BiometricResult, PinResult;
 
 class AuthService {
   static final AuthService instance = AuthService._();
   AuthService._();
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
+  // Google Sign-In tylko do kalendarza
+  final _googleSignIn = GoogleSignIn(
     scopes: [
       'email',
       'profile',
-      // Zakres do odczytu kalendarza Google
       'https://www.googleapis.com/auth/calendar.readonly',
     ],
   );
 
-  GoogleSignInAccount? _currentUser;
-  GoogleSignInAccount? get currentUser => _currentUser;
-  bool get isSignedIn => _currentUser != null;
+  GoogleSignInAccount? _googleAccount;
+  bool _isLocked = false;
 
-  /// Próbuje przywrócić poprzednią sesję (bez ekranu wyboru konta).
-  Future<bool> tryAutoSignIn() async {
-    try {
-      final account = await _googleSignIn.signInSilently();
-      _currentUser = account;
-      return account != null;
-    } catch (_) {
-      return false;
+  // ── Publiczny stan ─────────────────────────────────────────────────────────
+
+  AppUser? get currentUser => ApiAuthService.instance.currentUser;
+  bool get isSignedIn => currentUser != null;          // backward compat
+  bool get isAuthenticated => currentUser != null;
+  bool get isLocked => _isLocked;
+
+  // ── Inicjalizacja przy starcie app ─────────────────────────────────────────
+
+  Future<void> initialize() async {
+    await ApiAuthService.instance.loadStoredSession();
+    if (isAuthenticated) {
+      // Cicha próba przywrócenia sesji Google (dla kalendarza)
+      try {
+        _googleAccount = await _googleSignIn.signInSilently();
+      } catch (_) {}
     }
   }
 
-  /// Otwiera picker Google Sign-In.
-  Future<GoogleSignInAccount?> signIn() async {
+  /// Sprawdza czy aplikacja powinna przejść do ekranu blokady.
+  Future<bool> checkNeedsLocalAuth() async {
+    if (!isAuthenticated) return false;
+    return await LocalAuthService.instance.needsLocalAuth;
+  }
+
+  void lock() => _isLocked = true;
+  void unlock() => _isLocked = false;
+
+  // ── Logowanie ──────────────────────────────────────────────────────────────
+
+  Future<AuthResult> signInWithEmail(String email, String password,
+      {bool useMock = false}) async {
+    final result =
+        await ApiAuthService.instance.loginWithEmail(email, password, useMock);
+    if (result.success) _isLocked = false;
+    return result;
+  }
+
+  Future<AuthResult> register(String name, String email, String password,
+      {bool useMock = false}) async {
+    return await ApiAuthService.instance.register(name, email, password, useMock);
+  }
+
+  /// Logowanie Google: otwiera picker kont, wymienia token z backendem.
+  Future<AuthResult> signInWithGoogle({bool useMock = false}) async {
     try {
       final account = await _googleSignIn.signIn();
-      _currentUser = account;
-      return account;
+      if (account == null) return AuthResult.error('Logowanie anulowane');
+      _googleAccount = account;
+
+      String idToken = '';
+      try {
+        final auth = await account.authentication;
+        idToken = auth.idToken ?? '';
+      } catch (_) {}
+
+      final result = await ApiAuthService.instance.loginWithGoogle(
+        googleIdToken: idToken,
+        email: account.email,
+        name: account.displayName ?? account.email,
+        photoUrl: account.photoUrl,
+        useMock: useMock,
+      );
+      if (result.success) _isLocked = false;
+      return result;
     } catch (e) {
-      return null;
+      return AuthResult.error('Błąd Google Sign-In: $e');
     }
   }
 
-  Future<void> signOut() async {
-    await _googleSignIn.signOut();
-    _currentUser = null;
+  // Backward compat — używany w login_screen.dart
+  Future<bool> tryAutoSignIn({bool useMock = false}) async {
+    await initialize();
+    return isAuthenticated;
   }
 
-  /// Zwraca aktualny access token OAuth (do wywołań Google Calendar API).
-  /// Automatycznie odświeża token jeśli wygasł.
+  // Backward compat alias
+  Future<AuthResult> signIn({bool useMock = false}) =>
+      signInWithGoogle(useMock: useMock);
+
+  // ── Odblokowanie (biometria / PIN) ─────────────────────────────────────────
+
+  Future<BiometricResult> unlockWithBiometric() async {
+    final result = await LocalAuthService.instance.authenticateBiometric();
+    if (result == BiometricResult.success) _isLocked = false;
+    return result;
+  }
+
+  Future<PinResult> unlockWithPin(String pin) async {
+    final result = await LocalAuthService.instance.verifyPin(pin);
+    if (result.isSuccess) _isLocked = false;
+    return result;
+  }
+
+  // ── Wylogowanie ────────────────────────────────────────────────────────────
+
+  Future<void> signOut({bool useMock = false}) async {
+    await ApiAuthService.instance.logout(useMock);
+    // Lokalny auth NIE jest kasowany przy wylogowaniu z konta —
+    // usuwany jest dopiero gdy użytkownik jawnie usuwa PIN/biometrię
+    // lub całkowicie usuwa aplikację.
+    // Uzasadnienie: przy kolejnym logowaniu na to samo konto PIN powinien
+    // nadal działać; jeśli zaloguje się inny użytkownik — clearLocalAuth().
+    try {
+      await _googleSignIn.signOut();
+    } catch (_) {}
+    _googleAccount = null;
+    _isLocked = false;
+  }
+
+  /// Wywołaj gdy zaloguje się INNY użytkownik — czyści PIN/biometrię.
+  Future<void> clearLocalAuth() async {
+    await LocalAuthService.instance.clearAll();
+  }
+
+  // ── Google Calendar (dostęp do access token) ───────────────────────────────
+
+  /// Używane przez GoogleCalendarService.
   Future<String?> getAccessToken() async {
     try {
-      // Upewnij się, że mamy aktywne konto
-      GoogleSignInAccount? account = _currentUser;
+      GoogleSignInAccount? account = _googleAccount;
       account ??= await _googleSignIn.signInSilently();
       if (account == null) return null;
-
-      // Pobierz (i odśwież jeśli trzeba) tokeny
+      _googleAccount = account;
       final auth = await account.authentication;
       return auth.accessToken;
     } catch (_) {
