@@ -40,14 +40,17 @@ class BookingDetailSheet extends StatelessWidget {
     // Kolor statusu
     final statusColor = booking.status == BookingStatus.booked
         ? Colors.green
-        : booking.status == BookingStatus.pending
+        : booking.status == BookingStatus.pending ||
+                booking.status == BookingStatus.inquiry
             ? Colors.orange
             : Colors.grey;
     final statusLabel = booking.status == BookingStatus.booked
         ? 'Potwierdzona'
         : booking.status == BookingStatus.pending
             ? 'Oczekuje na potwierdzenie'
-            : 'Zapytanie';
+            : booking.status == BookingStatus.inquiry
+                ? 'Zapytanie'
+                : 'Nieznany';
 
     return Container(
       decoration: BoxDecoration(

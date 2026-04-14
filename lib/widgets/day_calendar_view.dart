@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/booking.dart';
 import '../utils/date_helpers.dart';
@@ -168,8 +169,8 @@ class DayCalendarView extends StatelessWidget {
 
       final top = ((hour - _startHour) * 60 + minute) / 60 * hourRowHeight;
       final height = slotDurationMinutes / 60 * hourRowHeight;
-      final showLabel = height >= 36;
-      final showHint = height >= 52;
+      final showLabel = height >= 22;
+      final showHint = height >= 40;
       final staff = slotStaff[slot] ?? []; // lista pracowników na ten slot
 
       result.add(
@@ -281,8 +282,14 @@ class DayCalendarView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double hourRowHeight = 64 * zoom;
     final totalHours = _endHour - _startHour;
+    // Minimalna wysokość wiersza gwarantująca czytelny tekst w komórkach.
+    // zoom=1.0 → "dopasuj do ekranu", ale nigdy poniżej _minHourRowHeight.
+    const double _minHourRowHeight = 44.0;
+    final double hourRowHeight = math.max(
+      _minHourRowHeight,
+      (viewHeight / totalHours) * zoom,
+    );
     final totalHeight = totalHours * hourRowHeight;
 
     final allDayBookings = bookings

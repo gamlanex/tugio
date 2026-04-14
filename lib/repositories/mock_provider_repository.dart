@@ -2,17 +2,24 @@ import '../data/mock_data.dart';
 import '../models/provider.dart';
 import 'provider_repository.dart';
 
-/// Implementacja mock — dane z mock_data.dart, bez połączenia sieciowego.
+/// Implementacja mock — dane w pamięci, bez połączenia sieciowego.
+/// Używa statycznej listy żeby wszystkie instancje widziały te same dane.
 /// Zamień na HttpProviderRepository żeby podłączyć prawdziwe API.
 class MockProviderRepository implements ProviderRepository {
-  // Lokalna kopia — naśladuje stan serwera
-  final List<ServiceProvider> _providers =
+  // Statyczna lista — persystuje przez cały czas życia aplikacji,
+  // dzielona między wszystkimi instancjami (jak MockBookingRepository).
+  static final List<ServiceProvider> _providers =
       mockProviders.where((p) => p.isSubscribed).toList();
+
+  /// Resetuje listę do stanu początkowego (np. przy wylogowaniu).
+  static void reset() {
+    _providers
+      ..clear()
+      ..addAll(mockProviders.where((p) => p.isSubscribed));
+  }
 
   @override
   Future<List<ServiceProvider>> getSubscribed() async {
-    // Symulacja opóźnienia sieciowego (odkomentuj przy testach UI)
-    // await Future.delayed(const Duration(milliseconds: 300));
     return List.unmodifiable(_providers);
   }
 

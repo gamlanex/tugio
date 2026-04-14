@@ -179,20 +179,25 @@ class WeekCalendarView extends StatelessWidget {
           ],
         );
 
-    return SizedBox(
-      height: viewHeight,
-      child: Column(
-        children: [
+    // Wysokość siatki = min(treść, dostępne miejsce) — bez białego ekranu po zoom-out.
+    final double contentHeight = totalRows * rowHeight;
+    final double maxGridHeight = viewHeight - headerHeight - 8;
+    final double gridHeight = contentHeight < maxGridHeight ? contentHeight : maxGridHeight;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
           // ── nagłówki dni — STICKY (nie scrollują) ────────
           buildHeader(),
           const SizedBox(height: 8),
 
           // ── siatka — scrollowana osobno ──────────────────
-          Expanded(
+          SizedBox(
+            height: gridHeight,
             child: SingleChildScrollView(
               controller: scrollController,
               child: SizedBox(
-                height: totalRows * rowHeight,
+                height: contentHeight,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -359,9 +364,8 @@ class WeekCalendarView extends StatelessWidget {
               ),
             ),
           ),         // SingleChildScrollView
-        ),           // Expanded
+        ),           // SizedBox(gridHeight)
       ],             // Column children
-    ),               // Column
-  );                 // outer SizedBox
+    );               // Column
   }
 }

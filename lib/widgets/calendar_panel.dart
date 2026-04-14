@@ -8,6 +8,16 @@ import 'week_calendar_view.dart';
 import 'month_calendar_view.dart';
 import 'zoom_listener.dart';
 
+/// Tryb filtrowania kalendarza — cyklicznie przełączany jednym przyciskiem.
+enum CalendarFilter {
+  /// Pokazuj wszystko: wolne sloty + rezerwacje + eventy z kalendarza urządzenia.
+  all,
+  /// Ukryj wolne sloty — pokazuj tylko rezerwacje i eventy z kalendarza.
+  noSlots,
+  /// Tylko moje wizyty — ukryj sloty i eventy zaimportowane z kalendarza.
+  onlyMine,
+}
+
 class CalendarPanel extends StatelessWidget {
   final CalendarViewMode calendarMode;
   final DateTime selectedDate;
@@ -35,11 +45,10 @@ class CalendarPanel extends StatelessWidget {
   final List<String> confirmationSlots;
   /// Pracownicy dostępni na dany slot — widoczne w widoku dnia.
   final Map<String, List<String>> slotStaff;
-  /// Czy pokazywać dostępne sloty rezerwacji.
-  /// false = tryb "tylko mój kalendarz" — sloty są ukryte.
-  final bool showSlots;
-  /// Callback przełącznika widoczności slotów.
-  final VoidCallback? onToggleSlots;
+  /// Aktywny filtr kalendarza — cyklicznie przełączany jednym przyciskiem.
+  final CalendarFilter calendarFilter;
+  /// Callback cyklicznego przełącznika filtra.
+  final VoidCallback? onCycleFilter;
 
   const CalendarPanel({
     super.key,
@@ -65,8 +74,8 @@ class CalendarPanel extends StatelessWidget {
     this.onTodayPressed,
     this.confirmationSlots = const [],
     this.slotStaff = const {},
-    this.showSlots = true,
-    this.onToggleSlots,
+    this.calendarFilter = CalendarFilter.all,
+    this.onCycleFilter,
   });
 
   List<DateTime> get _weekDays {
@@ -85,7 +94,11 @@ class CalendarPanel extends StatelessWidget {
         ? (screenH * 0.88).clamp(240.0, 800.0)
         : (screenH * 0.62).clamp(360.0, 800.0);
 
-    // Gdy showSlots = false — przekazujemy puste listy do widoków kalendarza
+    // Filtrowanie zgodnie z aktywnym trybem.
+    final showSlots = calendarFilter == CalendarFilter.all;
+    final effectiveBookings = calendarFilter == CalendarFilter.onlyMine
+        ? bookings.where((b) => !b.importedFromDeviceCalendar).toList()
+        : bookings;
     final effectiveSlots = showSlots ? freeSlots : const <String>[];
     final effectiveConfirmation = showSlots ? confirmationSlots : const <String>[];
     final effectiveStaff = showSlots ? slotStaff : const <String, List<String>>{};
@@ -101,8 +114,8 @@ class CalendarPanel extends StatelessWidget {
           onPrevious: onPreviousDate,
           onNext: onNextDate,
           onToday: onTodayPressed,
-          showSlots: showSlots,
-          onToggleSlots: onToggleSlots,
+          calendarFilter: calendarFilter,
+          onCycleFilter: onCycleFilter,
         ),
         const SizedBox(height: 12),
         if (calendarMode == CalendarViewMode.day)
@@ -111,9 +124,11 @@ class CalendarPanel extends StatelessWidget {
             initialZoom: dayZoom,
             onZoomChanged: onDayZoomChanged,
             onHorizontalDragEnd: onHorizontalDragEnd,
+            minZoom: 0.4,
+            maxZoom: 4.0,
             child: DayCalendarView(
               selectedDate: selectedDate,
-              bookings: bookings,
+              bookings: effectiveBookings,
               zoom: dayZoom,
               scrollController: dayScrollController,
               onBookingTap: onBookingTap,
@@ -122,7 +137,7 @@ class CalendarPanel extends StatelessWidget {
               slotDurationMinutes: slotDurationMinutes,
               slotStaff: effectiveStaff,
               viewHeight: viewHeight,
-              onSlotTap: showSlots && onSlotTap != null
+              onSlotTap: (calendarFilter == CalendarFilter.all) && onSlotTap != null
                   ? (slot) => onSlotTap!(slot, selectedDate)
                   : null,
             ),
@@ -133,10 +148,12 @@ class CalendarPanel extends StatelessWidget {
             initialZoom: weekZoom,
             onZoomChanged: onWeekZoomChanged,
             onHorizontalDragEnd: onHorizontalDragEnd,
+            minZoom: 0.7,
+            maxZoom: 6.0,
             child: WeekCalendarView(
               weekDays: _weekDays,
               selectedDate: selectedDate,
-              bookings: bookings,
+              bookings: effectiveBookings,
               zoom: weekZoom,
               scrollController: weekScrollController,
               onBookingTap: onBookingTap,
@@ -145,7 +162,7 @@ class CalendarPanel extends StatelessWidget {
               confirmationSlots: effectiveConfirmation,
               slotDurationMinutes: slotDurationMinutes,
               viewHeight: viewHeight,
-              onSlotTap: showSlots ? onSlotTap : null,
+              onSlotTap: calendarFilter == CalendarFilter.all ? onSlotTap : null,
             ),
           ),
         if (calendarMode == CalendarViewMode.month)
@@ -154,7 +171,7 @@ class CalendarPanel extends StatelessWidget {
             onHorizontalDragEnd: onHorizontalDragEnd,
             child: MonthCalendarView(
               selectedDate: selectedDate,
-              bookings: bookings,
+              bookings: effectiveBookings,
               onDayTap: onDayTap,
               maxHeight: viewHeight,
               freeSlots: effectiveSlots,
@@ -175,8 +192,8 @@ class _CalendarToolbar extends StatelessWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback? onToday;
-  final bool showSlots;
-  final VoidCallback? onToggleSlots;
+  final CalendarFilter calendarFilter;
+  final VoidCallback? onCycleFilter;
 
   const _CalendarToolbar({
     required this.calendarMode,
@@ -186,8 +203,8 @@ class _CalendarToolbar extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     this.onToday,
-    this.showSlots = true,
-    this.onToggleSlots,
+    this.calendarFilter = CalendarFilter.all,
+    this.onCycleFilter,
   });
 
   /// Czy dzień dzisiejszy jest widoczny w bieżącym widoku.
@@ -257,29 +274,39 @@ class _CalendarToolbar extends StatelessWidget {
                 onSelectionChanged: (value) => onModeChanged(value.first),
               ),
             ),
-            // ── Toggle: pokaż/ukryj sloty rezerwacji ──────────
+            // ── Cykliczny filtr kalendarza (all → noSlots → onlyMine → …) ──
             const SizedBox(width: 8),
             Tooltip(
-              message: showSlots ? 'Ukryj sloty rezerwacji' : 'Pokaż sloty rezerwacji',
+              message: switch (calendarFilter) {
+                CalendarFilter.all      => 'Wszystko (kliknij: ukryj sloty)',
+                CalendarFilter.noSlots  => 'Bez wolnych slotów (kliknij: tylko moje wizyty)',
+                CalendarFilter.onlyMine => 'Tylko moje wizyty (kliknij: pokaż wszystko)',
+              },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
                 decoration: BoxDecoration(
-                  color: showSlots
-                      ? Theme.of(context).colorScheme.primaryContainer
-                      : Theme.of(context).colorScheme.surfaceVariant,
+                  color: switch (calendarFilter) {
+                    CalendarFilter.all      => Theme.of(context).colorScheme.primaryContainer,
+                    CalendarFilter.noSlots  => Theme.of(context).colorScheme.surfaceVariant,
+                    CalendarFilter.onlyMine => Theme.of(context).colorScheme.tertiaryContainer,
+                  },
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: IconButton(
                   visualDensity: VisualDensity.compact,
-                  onPressed: onToggleSlots,
+                  onPressed: onCycleFilter,
                   icon: Icon(
-                    showSlots
-                        ? Icons.event_available_rounded
-                        : Icons.event_busy_rounded,
+                    switch (calendarFilter) {
+                      CalendarFilter.all      => Icons.event_available_rounded,
+                      CalendarFilter.noSlots  => Icons.event_busy_rounded,
+                      CalendarFilter.onlyMine => Icons.bookmark_rounded,
+                    },
                     size: 20,
-                    color: showSlots
-                        ? Theme.of(context).colorScheme.onPrimaryContainer
-                        : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                    color: switch (calendarFilter) {
+                      CalendarFilter.all      => Theme.of(context).colorScheme.onPrimaryContainer,
+                      CalendarFilter.noSlots  => Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                      CalendarFilter.onlyMine => Theme.of(context).colorScheme.onTertiaryContainer,
+                    },
                   ),
                 ),
               ),

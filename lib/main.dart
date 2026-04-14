@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/login_screen.dart';
 import 'screens/lock_screen.dart';
-import 'screens/main_screen.dart';
+import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'utils/app_theme.dart';
 
@@ -126,7 +126,7 @@ class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
           case AuthState.locked:
             return const LockScreen();
           case AuthState.authenticated:
-            return const MainScreen();
+            return const HomeScreen();
         }
       },
     );

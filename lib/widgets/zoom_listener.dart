@@ -7,6 +7,8 @@ class ZoomListener extends StatefulWidget {
   final double initialZoom;
   final void Function(double zoom) onZoomChanged;
   final void Function(DragEndDetails) onHorizontalDragEnd;
+  final double minZoom;
+  final double maxZoom;
 
   const ZoomListener({
     super.key,
@@ -15,6 +17,8 @@ class ZoomListener extends StatefulWidget {
     required this.initialZoom,
     required this.onZoomChanged,
     required this.onHorizontalDragEnd,
+    this.minZoom = 0.5,
+    this.maxZoom = 5.0,
   });
 
   @override
@@ -57,7 +61,7 @@ class _ZoomListenerState extends State<ZoomListener> {
 
           final scale = newDistance / _initialDistance;
           final oldZoom = widget.initialZoom;
-          final newZoom = (_initialZoom * scale).clamp(0.6, 2.2);
+          final newZoom = (_initialZoom * scale).clamp(widget.minZoom, widget.maxZoom);
 
           widget.onZoomChanged(newZoom);
 
