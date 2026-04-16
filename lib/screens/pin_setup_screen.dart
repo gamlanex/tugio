@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
+import '../l10n/app_strings.dart';
 import '../services/local_auth_service.dart';
 
 enum PinSetupMode { setup, change, remove }
@@ -24,6 +25,8 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
   //  'verify'  — weryfikacja starego PIN (tylko tryb change/remove)
   //  'enter'   — wprowadź nowy PIN
   //  'confirm' — potwierdź nowy PIN
+  AppStrings get s => AppStrings.of(context);
+
   late String _step;
   String _pin = '';
   String _firstPin = '';
@@ -38,21 +41,21 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
   }
 
   String get _title {
-    if (widget.mode == PinSetupMode.remove) return 'Usuń PIN';
-    if (widget.mode == PinSetupMode.change) return 'Zmień PIN';
-    return 'Ustaw PIN';
+    if (widget.mode == PinSetupMode.remove) return s.pinRemoveTitle;
+    if (widget.mode == PinSetupMode.change) return s.pinChangeTitle;
+    return s.pinSetupTitle;
   }
 
   String get _instruction {
     switch (_step) {
       case 'verify':
         return widget.mode == PinSetupMode.remove
-            ? 'Wpisz aktualny PIN, aby go usunąć'
-            : 'Wpisz aktualny PIN';
+            ? s.pinVerifyRemoveInstruction
+            : s.pinVerifyInstruction;
       case 'enter':
-        return 'Wpisz nowy PIN (4 cyfry)';
+        return s.pinEnterInstruction;
       case 'confirm':
-        return 'Potwierdź nowy PIN';
+        return s.pinConfirmInstruction;
       default:
         return '';
     }
@@ -93,9 +96,9 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
             await _doRemove();
           }
         } else if (result.isTooManyAttempts) {
-          _showError('Zbyt wiele prób. Zaloguj się ponownie.');
+          _showError(s.pinTooManyAttempts);
         } else {
-          _showError('Nieprawidłowy PIN (${result.remainingAttempts} prób)');
+          _showError(s.pinIncorrectAttempts(result.remainingAttempts));
         }
         break;
 
@@ -112,8 +115,8 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
           await LocalAuthService.instance.setupPin(pin);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                  content: Text('PIN został ustawiony'),
+              SnackBar(
+                  content: Text(s.pinSetSuccess),
                   backgroundColor: Colors.green),
             );
             Navigator.pop(context, true);
@@ -124,7 +127,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
             _firstPin = '';
             _step = 'enter';
           });
-          _showError('Piny się różnią — zacznij od nowa');
+          _showError(s.pinMismatch);
         }
         break;
     }
@@ -134,8 +137,8 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
     await LocalAuthService.instance.removePin();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('PIN został usunięty'),
+        SnackBar(
+            content: Text(s.pinRemovedSuccess),
             backgroundColor: Colors.orange),
       );
       Navigator.pop(context, true);

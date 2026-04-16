@@ -11,6 +11,7 @@
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../l10n/app_strings.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../services/auth_service.dart';
 import '../main.dart' show authStateNotifier, AuthState, useMockNotifier;
@@ -87,6 +88,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final cs = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
@@ -109,17 +111,17 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 28),
 
                 // ── Tagline ───────────────────────────────────────
-                const Text(
-                  'Zarezerwuj wizytę\nw kilka sekund',
+                Text(
+                  s.loginTagline,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
                       height: 1.3),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Zarządzaj rezerwacjami w jednym miejscu',
+                  s.loginDescription,
                   textAlign: TextAlign.center,
                   style: TextStyle(
                       fontSize: 14,
@@ -134,7 +136,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _emailCtr,
                     keyboardType: TextInputType.emailAddress,
                     decoration: InputDecoration(
-                      labelText: 'Email',
+                      labelText: s.emailLabel,
                       prefixIcon:
                           const Icon(Icons.email_outlined, size: 20),
                       border: OutlineInputBorder(
@@ -143,8 +145,8 @@ class _LoginScreenState extends State<LoginScreen> {
                           horizontal: 16, vertical: 14),
                     ),
                     validator: (v) {
-                      if (v == null || v.isEmpty) return 'Podaj email';
-                      if (!v.contains('@')) return 'Nieprawidłowy email';
+                      if (v == null || v.isEmpty) return s.emailRequired;
+                      if (!v.contains('@')) return s.emailInvalid;
                       return null;
                     },
                   ),
@@ -153,7 +155,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     controller: _passCtr,
                     obscureText: !_showPass,
                     decoration: InputDecoration(
-                      labelText: 'Hasło',
+                      labelText: s.passwordLabel,
                       prefixIcon:
                           const Icon(Icons.lock_outline, size: 20),
                       suffixIcon: IconButton(
@@ -171,7 +173,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           horizontal: 16, vertical: 14),
                     ),
                     validator: (v) =>
-                        (v == null || v.isEmpty) ? 'Podaj hasło' : null,
+                        (v == null || v.isEmpty) ? s.passwordRequired : null,
                   ),
                   const SizedBox(height: 16),
 
@@ -191,8 +193,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             width: 20,
                             child: CircularProgressIndicator(
                                 color: Colors.white, strokeWidth: 2))
-                        : const Text('Zaloguj się',
-                            style: TextStyle(
+                        : Text(s.loginButton,
+                            style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600)),
                   ),
@@ -208,7 +210,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       Padding(
                         padding:
                             const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text('lub',
+                        child: Text(s.or,
                             style: TextStyle(
                                 color: cs.onSurface.withOpacity(0.45),
                                 fontSize: 13)),
@@ -239,8 +241,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         Icon(Icons.login,
                             color: Colors.indigo.shade600, size: 20),
                         const SizedBox(width: 10),
-                        const Text('Zaloguj się przez Google',
-                            style: TextStyle(
+                        Text(s.googleLoginButton,
+                            style: const TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600)),
                       ],
@@ -260,13 +262,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.play_arrow_rounded, size: 22),
-                        SizedBox(width: 8),
-                        Text('Wejdź w trybie demo',
-                            style: TextStyle(
+                        const Icon(Icons.play_arrow_rounded, size: 22),
+                        const SizedBox(width: 8),
+                        Text(s.demoModeButton,
+                            style: const TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w600)),
                       ],
@@ -274,7 +276,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Google Sign-In działa na urządzeniu mobilnym lub emulatorze.',
+                    s.webGoogleSigninInfo,
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 11.5,
@@ -306,15 +308,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Text('Nie masz konta? ',
+                      Text(s.noAccountText + ' ',
                           style: TextStyle(
                               color: cs.onSurface.withOpacity(0.6),
                               fontSize: 14)),
                       GestureDetector(
                         onTap: _openRegister,
-                        child: const Text(
-                          'Zarejestruj się',
-                          style: TextStyle(
+                        child: Text(
+                          s.registerLink,
+                          style: const TextStyle(
                             color: Colors.indigo,
                             fontWeight: FontWeight.w600,
                             fontSize: 14,

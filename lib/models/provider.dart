@@ -26,6 +26,12 @@ class ServiceProvider {
   /// Pusta lista lub brak klucza = slot ogólny (bez wyboru pracownika).
   final Map<String, List<String>> slotStaff;
 
+  /// Małe zdjęcie awatara (np. portret, logo) — używane w listach i kartach.
+  final String? avatarImageUrl;
+
+  /// Duże zdjęcie hero (np. wnętrze salonu) — używane w nagłówku ekranu detali.
+  final String? heroImageUrl;
+
   ServiceProvider({
     required this.id,
     required this.name,
@@ -44,5 +50,7 @@ class ServiceProvider {
     this.website,
     this.openingHours = const {},
     this.slotStaff = const {},
+    this.avatarImageUrl,
+    this.heroImageUrl,
   });
 }

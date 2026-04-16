@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/booking.dart';
 import '../models/calendar_view_mode.dart';
 import '../utils/date_helpers.dart';
+import '../l10n/app_strings.dart';
 import 'date_navigator.dart';
 import 'day_calendar_view.dart';
 import 'week_calendar_view.dart';
@@ -85,14 +86,23 @@ class CalendarPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Dynamiczna wysokość widoku.
-    // W landscape ekran jest krótki — używamy większego % i niższego minimum.
-    final size = MediaQuery.sizeOf(context);
-    final isLandscape = size.width > size.height;
-    final screenH = size.height;
+    // viewHeight = dostępna wysokość na siatkę kalendarza.
+    // Odejmujemy od wysokości ekranu wszystkie znane elementy UI:
+    //   AppBar:56, SafeArea, SingleChildScrollView padding:24,
+    //   SectionCard padding:28, toolbar kalendarza:94, gap:12, dolny margines:16
+    final mq = MediaQuery.of(context);
+    final isLandscape = mq.size.width > mq.size.height;
+    final screenH = mq.size.height;
+    const double fixedOverhead = 56   // AppBar
+                               + 24   // screen padding (12*2)
+                               + 28   // SectionCard padding (14*2)
+                               + 94   // CalendarToolbar (DateNavigator+gap+SegmentedButton)
+                               + 12   // gap toolbar→widok
+                               + 16;  // dolny margines po SectionCard
+    final overhead = fixedOverhead + mq.padding.top + mq.padding.bottom;
     final viewHeight = isLandscape
-        ? (screenH * 0.88).clamp(240.0, 800.0)
-        : (screenH * 0.62).clamp(360.0, 800.0);
+        ? (screenH - overhead).clamp(180.0, 500.0)
+        : (screenH - overhead).clamp(300.0, 700.0);
 
     // Filtrowanie zgodnie z aktywnym trybem.
     final showSlots = calendarFilter == CalendarFilter.all;
@@ -124,7 +134,7 @@ class CalendarPanel extends StatelessWidget {
             initialZoom: dayZoom,
             onZoomChanged: onDayZoomChanged,
             onHorizontalDragEnd: onHorizontalDragEnd,
-            minZoom: 0.4,
+            minZoom: 1.0,
             maxZoom: 4.0,
             child: DayCalendarView(
               selectedDate: selectedDate,
@@ -148,7 +158,7 @@ class CalendarPanel extends StatelessWidget {
             initialZoom: weekZoom,
             onZoomChanged: onWeekZoomChanged,
             onHorizontalDragEnd: onHorizontalDragEnd,
-            minZoom: 0.7,
+            minZoom: 1.0,
             maxZoom: 6.0,
             child: WeekCalendarView(
               weekDays: _weekDays,
@@ -231,6 +241,7 @@ class _CalendarToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -256,18 +267,18 @@ class _CalendarToolbar extends StatelessWidget {
                     const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                   ),
                 ),
-                segments: const [
+                segments: [
                   ButtonSegment(
                     value: CalendarViewMode.day,
-                    label: Text('Dzień', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    label: Text(s.day, maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                   ButtonSegment(
                     value: CalendarViewMode.week,
-                    label: Text('Tydz.', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    label: Text(s.week, maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                   ButtonSegment(
                     value: CalendarViewMode.month,
-                    label: Text('Mies.', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    label: Text(s.month, maxLines: 1, overflow: TextOverflow.ellipsis),
                   ),
                 ],
                 selected: {calendarMode},
@@ -278,9 +289,9 @@ class _CalendarToolbar extends StatelessWidget {
             const SizedBox(width: 8),
             Tooltip(
               message: switch (calendarFilter) {
-                CalendarFilter.all      => 'Wszystko (kliknij: ukryj sloty)',
-                CalendarFilter.noSlots  => 'Bez wolnych slotów (kliknij: tylko moje wizyty)',
-                CalendarFilter.onlyMine => 'Tylko moje wizyty (kliknij: pokaż wszystko)',
+                CalendarFilter.all      => s.calendarFilterAllTooltip,
+                CalendarFilter.noSlots  => s.calendarFilterNoSlotsTooltip,
+                CalendarFilter.onlyMine => s.calendarFilterOnlyMineTooltip,
               },
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 200),

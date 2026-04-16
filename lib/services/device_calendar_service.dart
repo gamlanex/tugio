@@ -1,6 +1,7 @@
 import 'package:device_calendar_plus/device_calendar_plus.dart' as dc;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../models/booking.dart';
+import 'language_service.dart';
 
 class DeviceCalendarService {
   DeviceCalendarService._();
@@ -58,7 +59,7 @@ class DeviceCalendarService {
 
       final title = (e.title != null && e.title!.trim().isNotEmpty)
           ? e.title!.trim()
-          : 'Event z kalendarza';
+          : LanguageService.instance.text(pl: 'Event z kalendarza', en: 'Calendar event');
 
       final id =
           'device:${e.instanceId ?? e.eventId ?? '${start.millisecondsSinceEpoch}:$title'}';
@@ -92,5 +93,5 @@ enum PermissionResult { granted, denied }
 
 class DeviceCalendarPermissionDeniedException implements Exception {
   @override
-  String toString() => 'Brak zgody na odczyt kalendarza urządzenia';
+  String toString() => LanguageService.instance.text(pl: 'Brak zgody na odczyt kalendarza urządzenia', en: 'No permission to read device calendar');
 }

@@ -30,8 +30,14 @@ IconData serviceTypeIcon(String serviceType) {
     case 'kosmetyczka':
     case 'kosmetolog':
       return Icons.face_retouching_natural_rounded;
+    case 'fizjoterapeuta':
+    case 'rehabilitacja':
+      return Icons.accessibility_new_rounded;
+    case 'spotkanie':
+    case 'meeting':
+      return Icons.groups_rounded;
     default:
-      return Icons.store_rounded;
+      return Icons.event_rounded;
   }
 }
 

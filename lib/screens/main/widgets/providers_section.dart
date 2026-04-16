@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 import '../../../models/provider.dart';
 import '../../../utils/provider_avatar.dart';
 
@@ -22,6 +23,7 @@ class ProvidersSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final cs = Theme.of(context).colorScheme;
 
     return Container(
@@ -48,10 +50,10 @@ class ProvidersSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Moi usługodawcy',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      s.myProvidersTitle,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                   ),
                   AnimatedRotation(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/language_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ServiceType — typ usługi pobierany z API
@@ -58,8 +59,11 @@ class ServiceType {
   Color get color => ServiceTypeColors.resolve(colorHex);
 
   /// Inicjał do wyświetlenia gdy brak SVG lub ładowanie w toku.
+  String get localizedName =>
+      LanguageService.instance.serviceTypeLabel(name, id: id);
+
   String get initial =>
-      name.isNotEmpty ? name[0].toUpperCase() : '?';
+      localizedName.isNotEmpty ? localizedName[0].toUpperCase() : '?';
 
   /// Kategoria "Inne" — specjalny fallback bez filtrowania po typie.
   static const ServiceType other = ServiceType(

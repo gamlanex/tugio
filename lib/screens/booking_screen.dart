@@ -10,6 +10,7 @@ import '../widgets/section_card.dart';
 import '../widgets/services_carousel.dart';
 import '../widgets/slots_panel.dart';
 import '../widgets/calendar_panel.dart';
+import '../l10n/app_strings.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 class BookingScreen extends StatefulWidget {
@@ -83,15 +84,15 @@ class _BookingScreenState extends State<BookingScreen> {
     } on DeviceCalendarPermissionDeniedException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Brak zgody na odczyt kalendarza urządzenia'),
+          SnackBar(
+            content: Text(AppStrings.of(context).deviceCalendarPermissionDenied),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd importu kalendarza: $e')),
+          SnackBar(content: Text(AppStrings.of(context).calendarSyncError(e.toString()))),
         );
       }
     } finally {
@@ -156,7 +157,7 @@ class _BookingScreenState extends State<BookingScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Inquiry utworzone: ${selectedService.name}, $time')),
+      SnackBar(content: Text(AppStrings.of(context).inquiryCreated(selectedService.name, time))),
     );
   }
 
@@ -168,37 +169,41 @@ class _BookingScreenState extends State<BookingScreen> {
 
   Future<void> _showCancelDialog(Booking booking) async {
     final controller = TextEditingController();
+    final s = AppStrings.of(context);
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Odwołać rezerwację?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('${booking.service}\n${booking.timeText}'),
-            const SizedBox(height: 12),
-            TextField(
-              controller: controller,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Opis / powód',
-                border: OutlineInputBorder(),
+      builder: (ctx) {
+        final sd = AppStrings.of(ctx);
+        return AlertDialog(
+          title: Text(sd.cancelBookingTitle),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${booking.service}\n${booking.timeText}'),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                maxLines: 3,
+                decoration: InputDecoration(
+                  labelText: sd.cancelBookingReasonPlaceholder,
+                  border: const OutlineInputBorder(),
+                ),
               ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(sd.no),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(sd.cancelBookingConfirmButton),
             ),
           ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Nie'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Odwołaj'),
-          ),
-        ],
-      ),
+        );
+      },
     );
 
     if (result == true) {
@@ -212,8 +217,8 @@ class _BookingScreenState extends State<BookingScreen> {
           SnackBar(
             content: Text(
               controller.text.trim().isEmpty
-                  ? 'Rezerwacja odwołana'
-                  : 'Rezerwacja odwołana: ${controller.text.trim()}',
+                  ? s.bookingCancelled
+                  : s.bookingCancelledWithReason(controller.text.trim()),
             ),
           ),
         );
@@ -247,6 +252,7 @@ class _BookingScreenState extends State<BookingScreen> {
   // ─── build ───────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final isPortrait =
         MediaQuery.of(context).orientation == Orientation.portrait;
 
@@ -277,8 +283,8 @@ class _BookingScreenState extends State<BookingScreen> {
               if (inquiry != null) {
                 _confirmInquiryFromLan(inquiry.id);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('LAN: inquiry zmienione na booked')),
+                  SnackBar(
+                      content: Text(AppStrings.of(context).bookingConfirmedSimulated('inquiry'))),
                 );
               }
             },
@@ -291,34 +297,34 @@ class _BookingScreenState extends State<BookingScreen> {
         ],
       ),
       body: SafeArea(
-        child: isPortrait ? _buildPortrait() : _buildLandscape(),
+        child: isPortrait ? _buildPortrait(s) : _buildLandscape(s),
       ),
     );
   }
 
   // ─── layouty ─────────────────────────────────────────────
-  Widget _buildPortrait() {
+  Widget _buildPortrait(AppStrings s) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(12),
       child: Column(
         children: [
           SectionCard(
-            title: 'Usługi',
+            title: s.servicesTitle,
             child: ServicesCarousel(
               services: services,
               selectedService: selectedService,
               pageController: _servicePageController,
-              onServiceChanged: (s) => setState(() => selectedService = s),
+              onServiceChanged: (svc) => setState(() => selectedService = svc),
             ),
           ),
           const SizedBox(height: 12),
           SectionCard(
-            title: 'Wolne sloty – ${formatDate(selectedDate)}',
+            title: s.freeSlotsForDate(formatDate(selectedDate)),
             child: _buildSlotsPanel(),
           ),
           const SizedBox(height: 12),
           SectionCard(
-            title: 'Mój kalendarz',
+            title: s.myCalendarTitle,
             child: _buildCalendarPanel(),
           ),
         ],
@@ -326,7 +332,7 @@ class _BookingScreenState extends State<BookingScreen> {
     );
   }
 
-  Widget _buildLandscape() {
+  Widget _buildLandscape(AppStrings s) {
     return Padding(
       padding: const EdgeInsets.all(12),
       child: Row(
@@ -334,12 +340,12 @@ class _BookingScreenState extends State<BookingScreen> {
           Expanded(
             flex: 3,
             child: ScrollableSection(
-              title: 'Usługi',
+              title: s.servicesTitle,
               child: ServicesCarousel(
                 services: services,
                 selectedService: selectedService,
                 pageController: _servicePageController,
-                onServiceChanged: (s) => setState(() => selectedService = s),
+                onServiceChanged: (svc) => setState(() => selectedService = svc),
               ),
             ),
           ),
@@ -347,7 +353,7 @@ class _BookingScreenState extends State<BookingScreen> {
           Expanded(
             flex: 4,
             child: ScrollableSection(
-              title: 'Wolne sloty – ${formatDate(selectedDate)}',
+              title: s.freeSlotsForDate(formatDate(selectedDate)),
               child: _buildSlotsPanel(),
             ),
           ),
@@ -355,7 +361,7 @@ class _BookingScreenState extends State<BookingScreen> {
           Expanded(
             flex: 6,
             child: ScrollableSection(
-              title: 'Mój kalendarz',
+              title: s.myCalendarTitle,
               child: _buildCalendarPanel(),
             ),
           ),

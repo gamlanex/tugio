@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../services/local_auth_service.dart';
+import '../../../l10n/app_strings.dart';
+import '../../../main.dart' show languageNotifier, setAppLanguage;
 import '../../pin_setup_screen.dart';
 
 class SecuritySettingsSheet extends StatefulWidget {
@@ -10,6 +12,8 @@ class SecuritySettingsSheet extends StatefulWidget {
 }
 
 class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
+  AppStrings get s => AppStrings.of(context);
+
   bool _biometricAvailable = false;
   bool _biometricEnabled = false;
   bool _pinEnabled = false;
@@ -42,15 +46,15 @@ class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
   Future<void> _toggleBiometric(bool value) async {
     if (value) {
       final result = await LocalAuthService.instance.authenticateBiometric(
-        reason: 'Potwierdź tożsamość aby włączyć odblokowanie biometryczne',
+        reason: s.biometricConfirmationPrompt,
       );
       if (!mounted) return;
       if (result != BiometricResult.success) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(result == BiometricResult.notAvailable
-                ? 'Biometria niedostępna lub niezarejestrowana w systemie'
-                : 'Weryfikacja nieudana — biometria nie została włączona'),
+                ? s.biometricUnavailable
+                : s.biometricVerificationFailed),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -104,7 +108,7 @@ class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
               ),
             ),
             const SizedBox(height: 16),
-            Text('Zabezpieczenia',
+            Text(s.securityTitle,
                 style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
@@ -117,8 +121,8 @@ class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
               if (_biometricAvailable) ...[
                 SettingsRow(
                   icon: Icons.fingerprint,
-                  title: 'Odcisk palca',
-                  subtitle: _biometricEnabled ? 'Włączony' : 'Wyłączony',
+                  title: s.biometricLabel,
+                  subtitle: _biometricEnabled ? s.biometricEnabled : s.biometricDisabled,
                   trailing: Switch(
                     value: _biometricEnabled,
                     onChanged: _toggleBiometric,
@@ -130,11 +134,11 @@ class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
 
               SettingsRow(
                 icon: Icons.pin_outlined,
-                title: 'Kod PIN',
-                subtitle: _pinEnabled ? 'Ustawiony' : 'Nie ustawiony',
+                title: s.pinLabel,
+                subtitle: _pinEnabled ? s.pinSet : s.pinNotSet,
                 trailing: TextButton(
                   onPressed: _setupOrChangePin,
-                  child: Text(_pinEnabled ? 'Zmień' : 'Ustaw',
+                  child: Text(_pinEnabled ? s.pinChangeButton : s.pinSetupButton,
                       style: const TextStyle(color: Colors.indigo)),
                 ),
               ),
@@ -142,15 +146,43 @@ class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
                 const Divider(height: 1),
                 SettingsRow(
                   icon: Icons.remove_circle_outline,
-                  title: 'Usuń PIN',
-                  subtitle: 'Wyłącz logowanie kodem',
+                  title: s.removePinLabel,
+                  subtitle: s.removePinSubtitle,
                   trailing: TextButton(
                     onPressed: _removePin,
-                    child: const Text('Usuń',
-                        style: TextStyle(color: Colors.red)),
+                    child: Text(s.removePinButton,
+                        style: const TextStyle(color: Colors.red)),
                   ),
                 ),
               ],
+
+              const Divider(height: 1),
+
+              // ── Język ─────────────────────────────────────────
+              ValueListenableBuilder<String>(
+                valueListenable: languageNotifier,
+                builder: (_, lang, __) => SettingsRow(
+                  icon: Icons.language_rounded,
+                  title: s.languageLabel,
+                  subtitle: lang == 'en' ? s.languageEnglish : s.languagePolish,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _LangChip(
+                        label: 'PL',
+                        selected: lang == 'pl',
+                        onTap: () { setAppLanguage('pl'); },
+                      ),
+                      const SizedBox(width: 6),
+                      _LangChip(
+                        label: 'EN',
+                        selected: lang == 'en',
+                        onTap: () { setAppLanguage('en'); },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
 
               const SizedBox(height: 8),
 
@@ -168,8 +200,7 @@ class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'PIN i biometria blokują aplikację po ${5} minutach w tle. '
-                        'Sesja wygasa po 30 dniach — wówczas wymagane pełne logowanie.',
+                        s.securityInfo,
                         style: TextStyle(
                             fontSize: 12,
                             color: cs.onSurface.withOpacity(0.55),
@@ -181,6 +212,47 @@ class _SecuritySettingsSheetState extends State<SecuritySettingsSheet> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ── Language chip (PL / EN) ───────────────────────────────────────────────────
+class _LangChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _LangChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected
+              ? Colors.indigo
+              : Colors.indigo.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? Colors.indigo : Colors.indigo.withOpacity(0.3),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected ? Colors.white : Colors.indigo.shade600,
+          ),
         ),
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/booking.dart';
 import '../utils/date_helpers.dart';
+import '../l10n/app_strings.dart';
 
 class PendingBookingsScreen extends StatefulWidget {
   final List<Booking> bookings;
@@ -32,7 +33,7 @@ class _PendingBookingsScreenState extends State<PendingBookingsScreen> {
     widget.onConfirm(booking);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('✅ Rezerwacja "${booking.service}" potwierdzona!'),
+        content: Text(AppStrings.of(context).bookingConfirmedMessage(booking.service)),
         backgroundColor: Colors.green.shade700,
       ),
     );
@@ -41,42 +42,46 @@ class _PendingBookingsScreenState extends State<PendingBookingsScreen> {
   Future<void> _cancelBooking(Booking booking) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Odwołać rezerwację?'),
-        content: Text('${booking.service}\n${booking.timeText}'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Zostaw'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Odwołaj'),
-          ),
-        ],
-      ),
+      builder: (ctx) {
+        final sd = AppStrings.of(ctx);
+        return AlertDialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(sd.cancelBookingTitle),
+          content: Text('${booking.service}\n${booking.timeText}'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(sd.leave),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: Colors.red),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(sd.cancelBookingConfirmButton),
+            ),
+          ],
+        );
+      },
     );
 
     if (result == true && mounted) {
       setState(() => _bookings.removeWhere((b) => b.id == booking.id));
       widget.onCancel(booking.id);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rezerwacja odwołana')),
+        SnackBar(content: Text(AppStrings.of(context).bookingCancelled)),
       );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF2A1E18) : const Color(0xFFFBEDE6);
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Oczekujące na potwierdzenie'),
+        title: Text(s.pendingBookingsTitle),
         centerTitle: true,
         backgroundColor: bgColor,
         elevation: 0,
@@ -99,6 +104,7 @@ class _PendingBookingsScreenState extends State<PendingBookingsScreen> {
   }
 
   Widget _buildEmpty() {
+    final s = AppStrings.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -107,7 +113,7 @@ class _PendingBookingsScreenState extends State<PendingBookingsScreen> {
               size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 16),
           Text(
-            'Żadna rezerwacja nie oczekuje\nna potwierdzenie',
+            s.noPendingBookings,
             textAlign: TextAlign.center,
             style: TextStyle(
                 fontSize: 16,
@@ -134,6 +140,7 @@ class _PendingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final waitDiff = booking.pendingSince != null
         ? DateTime.now().difference(booking.pendingSince!)
         : null;
@@ -141,8 +148,8 @@ class _PendingCard extends StatelessWidget {
     final waitText = waitDiff == null
         ? null
         : waitDiff.inHours < 1
-            ? 'Czeka ${waitDiff.inMinutes} min'
-            : 'Czeka ${waitDiff.inHours}h ${waitDiff.inMinutes % 60}min';
+            ? s.waitMinutes(waitDiff.inMinutes)
+            : s.waitHoursMinutes(waitDiff.inHours, waitDiff.inMinutes % 60);
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
@@ -240,7 +247,7 @@ class _PendingCard extends StatelessWidget {
                     border: Border.all(color: Colors.orange.shade200),
                   ),
                   child: Text(
-                    'Oczekuje',
+                    s.pendingStatusLabel,
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -257,8 +264,8 @@ class _PendingCard extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: onCancel,
                     icon: const Icon(Icons.close, size: 16),
-                    label: const Text('Odwołaj',
-                        style: TextStyle(fontSize: 13)),
+                    label: Text(s.cancelBookingConfirmButton,
+                        style: const TextStyle(fontSize: 13)),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red.shade600,
                       side: BorderSide(color: Colors.red.shade300),
@@ -273,8 +280,8 @@ class _PendingCard extends StatelessWidget {
                   child: FilledButton.icon(
                     onPressed: onConfirm,
                     icon: const Icon(Icons.check, size: 16),
-                    label: const Text('Potwierdź',
-                        style: TextStyle(fontSize: 13)),
+                    label: Text(s.confirmBookingButton,
+                        style: const TextStyle(fontSize: 13)),
                     style: FilledButton.styleFrom(
                       backgroundColor: Colors.green.shade600,
                       shape: RoundedRectangleBorder(

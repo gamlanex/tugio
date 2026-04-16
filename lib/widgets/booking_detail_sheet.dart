@@ -3,7 +3,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/booking.dart';
 import '../models/provider.dart';
 import '../utils/date_helpers.dart';
-import '../utils/provider_avatar.dart';
+import '../utils/provider_avatar.dart' show serviceTypeIcon, serviceTypeColor;
+import '../l10n/app_strings.dart';
+import '../services/language_service.dart';
 
 /// Bottom sheet ze szczegółami rezerwacji.
 /// [provider] = null oznacza event zaimportowany z Google Calendar.
@@ -33,6 +35,7 @@ class BookingDetailSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final cs = Theme.of(context).colorScheme;
     final bottom = MediaQuery.of(context).padding.bottom;
     final isImported = provider == null;
@@ -45,12 +48,12 @@ class BookingDetailSheet extends StatelessWidget {
             ? Colors.orange
             : Colors.grey;
     final statusLabel = booking.status == BookingStatus.booked
-        ? 'Potwierdzona'
+        ? s.statusBooked
         : booking.status == BookingStatus.pending
-            ? 'Oczekuje na potwierdzenie'
+            ? s.statusAwaitingConfirmation
             : booking.status == BookingStatus.inquiry
-                ? 'Zapytanie'
-                : 'Nieznany';
+                ? s.statusInquiry
+                : s.statusUnknown;
 
     return Container(
       decoration: BoxDecoration(
@@ -79,7 +82,7 @@ class BookingDetailSheet extends StatelessWidget {
           Row(
             children: [
               if (provider != null)
-                ProviderAvatar(serviceType: provider!.serviceType, radius: 24)
+                _ProviderAvatarCell(provider: provider!, radius: 24)
               else
                 CircleAvatar(
                   radius: 24,
@@ -99,7 +102,7 @@ class BookingDetailSheet extends StatelessWidget {
                     ),
                     if (provider != null)
                       Text(
-                        provider!.serviceType,
+                        LanguageService.instance.serviceTypeLabel(provider!.serviceType),
                         style: TextStyle(
                             fontSize: 13,
                             color: cs.onSurface.withOpacity(0.55)),
@@ -221,10 +224,10 @@ class BookingDetailSheet extends StatelessWidget {
                   Icon(Icons.info_outline,
                       size: 16, color: Colors.amber.shade800),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Event z Google Calendar — edytuj go bezpośrednio w kalendarzu.',
-                      style: TextStyle(fontSize: 12.5),
+                      s.googleCalendarEventNote,
+                      style: const TextStyle(fontSize: 12.5),
                     ),
                   ),
                 ],
@@ -243,7 +246,7 @@ class BookingDetailSheet extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: () => _callPhone(provider!),
                       icon: const Icon(Icons.phone_rounded, size: 18),
-                      label: const Text('Zadzwoń'),
+                      label: Text(s.callButton),
                       style: OutlinedButton.styleFrom(
                         padding:
                             const EdgeInsets.symmetric(vertical: 12),
@@ -257,7 +260,7 @@ class BookingDetailSheet extends StatelessWidget {
                   child: OutlinedButton.icon(
                     onPressed: () => _openMaps(provider!),
                     icon: const Icon(Icons.map_rounded, size: 18),
-                    label: const Text('Mapa'),
+                    label: Text(s.mapButton),
                     style: OutlinedButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
@@ -278,8 +281,8 @@ class BookingDetailSheet extends StatelessWidget {
                 onPressed: onCancel,
                 icon: const Icon(Icons.cancel_outlined,
                     size: 18, color: Colors.red),
-                label: const Text('Odwołaj rezerwację',
-                    style: TextStyle(color: Colors.red)),
+                label: Text(s.cancelBookingConfirmButton,
+                    style: const TextStyle(color: Colors.red)),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 13),
                   side: BorderSide(
@@ -299,10 +302,41 @@ class BookingDetailSheet extends StatelessWidget {
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14)),
                 ),
-                child: const Text('Zamknij'),
+                child: Text(s.close),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Avatar z opcjonalnym zdjęciem ─────────────────────────────────────────────
+class _ProviderAvatarCell extends StatelessWidget {
+  final ServiceProvider provider;
+  final double radius;
+  const _ProviderAvatarCell({required this.provider, this.radius = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = serviceTypeColor(provider.serviceType);
+    final icon  = serviceTypeIcon(provider.serviceType);
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withOpacity(0.15),
+      ),
+      child: ClipOval(
+        child: provider.avatarImageUrl != null
+            ? Image.network(
+                provider.avatarImageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Icon(icon, color: color, size: radius),
+              )
+            : Icon(icon, color: color, size: radius),
       ),
     );
   }

@@ -16,6 +16,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/app_user.dart';
+import 'language_service.dart';
 
 // ── Wynik operacji auth ──────────────────────────────────────────────────────
 
@@ -94,7 +95,7 @@ class ApiAuthService {
 
       return _handleHttpResponse(res);
     } catch (e) {
-      return AuthResult.error('Błąd połączenia z serwerem');
+      return AuthResult.error(LanguageService.instance.text(pl: 'Błąd połączenia z serwerem', en: 'Server connection error'));
     }
   }
 
@@ -116,7 +117,7 @@ class ApiAuthService {
 
       return _handleHttpResponse(res);
     } catch (e) {
-      return AuthResult.error('Błąd połączenia z serwerem');
+      return AuthResult.error(LanguageService.instance.text(pl: 'Błąd połączenia z serwerem', en: 'Server connection error'));
     }
   }
 
@@ -194,10 +195,10 @@ class ApiAuthService {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         return _saveAndReturn(data);
       }
-      final msg = data['message'] as String? ?? 'Błąd serwera (${res.statusCode})';
+      final msg = data['message'] as String? ?? LanguageService.instance.text(pl: 'Błąd serwera (${res.statusCode})', en: 'Server error (${res.statusCode})');
       return AuthResult.error(msg);
     } catch (_) {
-      return AuthResult.error('Błąd serwera (${res.statusCode})');
+      return AuthResult.error(LanguageService.instance.text(pl: 'Błąd serwera (${res.statusCode})', en: 'Server error (${res.statusCode})'));
     }
   }
 
@@ -205,7 +206,7 @@ class ApiAuthService {
     final token = data['token'] as String?;
     final userData = data['user'] as Map<String, dynamic>?;
     if (token == null || userData == null) {
-      return AuthResult.error('Nieprawidłowa odpowiedź serwera');
+      return AuthResult.error(LanguageService.instance.text(pl: 'Nieprawidłowa odpowiedź serwera', en: 'Invalid server response'));
     }
     final user = AppUser.fromJson(userData);
     _persistSession(token, user);

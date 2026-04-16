@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import '../models/booking.dart';
 import '../models/provider.dart';
 import '../utils/date_helpers.dart';
+import '../utils/provider_avatar.dart' show serviceTypeIcon, serviceTypeColor;
 import '../widgets/booking_detail_sheet.dart';
+import '../l10n/app_strings.dart';
 
 class UpcomingBookingsScreen extends StatefulWidget {
   final List<Booking> bookings;
@@ -35,8 +37,8 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
         return widget.providers.firstWhere((p) => p.id == booking.providerId);
       } catch (_) {}
     }
-    // Fallback: jeśli rezerwacja nie ma providerId (np. mock), użyj pierwszego z listy
-    return widget.providers.isNotEmpty ? widget.providers.first : null;
+    // Brak providerId = rezerwacja lokalna / zaimportowana, nie przypisana do dostawcy
+    return null;
   }
 
   Future<void> _openDetail(Booking booking) async {
@@ -59,12 +61,13 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
   }
 
   Future<void> _confirmCancel(Booking booking) async {
+    final s = AppStrings.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Odwołać rezerwację?'),
+        title: Text(s.cancelBookingTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -80,12 +83,12 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Zostaw'),
+            child: Text(s.leave),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Odwołaj'),
+            child: Text(s.cancelBookingConfirmButton),
           ),
         ],
       ),
@@ -97,7 +100,7 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
       });
       widget.onCancel(booking.id);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Rezerwacja odwołana')),
+        SnackBar(content: Text(AppStrings.of(context).bookingCancelled)),
       );
     }
   }
@@ -110,7 +113,7 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Nadchodzące rezerwacje'),
+        title: Text(AppStrings.of(context).upcomingBookingsTitle),
         centerTitle: true,
         backgroundColor: bgColor,
         elevation: 0,
@@ -127,6 +130,7 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
                 return _BookingCard(
                   booking: booking,
                   cardColor: cardColor,
+                  provider: _providerFor(booking),
                   onTap: () => _openDetail(booking),
                 );
               },
@@ -135,6 +139,7 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
   }
 
   Widget _buildEmpty() {
+    final s = AppStrings.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -143,7 +148,7 @@ class _UpcomingBookingsScreenState extends State<UpcomingBookingsScreen> {
               size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 16),
           Text(
-            'Brak nadchodzących rezerwacji',
+            s.noUpcomingBookings,
             style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey.shade500,
@@ -162,17 +167,18 @@ class _BookingCard extends StatelessWidget {
   final Booking booking;
   final Color cardColor;
   final VoidCallback onTap;
+  final ServiceProvider? provider;
 
   const _BookingCard({
     required this.booking,
     required this.cardColor,
     required this.onTap,
+    this.provider,
   });
 
   Color get _statusColor {
     switch (booking.status) {
       case BookingStatus.pending:
-        return Colors.orange;
       case BookingStatus.inquiry:
         return Colors.orange;
       case BookingStatus.booked:
@@ -182,35 +188,20 @@ class _BookingCard extends StatelessWidget {
     }
   }
 
-  IconData get _statusIcon {
+  String _statusLabel(AppStrings s) {
     switch (booking.status) {
-      case BookingStatus.pending:
-        return Icons.hourglass_top_rounded;
-      case BookingStatus.inquiry:
-        return Icons.hourglass_top_rounded;
-      case BookingStatus.booked:
-        return Icons.check_circle_rounded;
-      default:
-        return Icons.help_outline_rounded;
-    }
-  }
-
-  String get _statusLabel {
-    switch (booking.status) {
-      case BookingStatus.pending:
-        return 'Oczekuje';
-      case BookingStatus.inquiry:
-        return 'Zapytanie';
-      case BookingStatus.booked:
-        return 'Potwierdzona';
-      default:
-        return 'Nieznany';
+      case BookingStatus.pending:  return s.statusPending;
+      case BookingStatus.inquiry:  return s.statusInquiry;
+      case BookingStatus.booked:   return s.statusBooked;
+      default:                     return s.statusUnknown;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final color = _statusColor;
+    final hasPhoto = provider?.avatarImageUrl != null;
 
     return Material(
       color: Colors.transparent,
@@ -218,13 +209,11 @@ class _BookingCard extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(18),
         child: Container(
+          height: 88,
           decoration: BoxDecoration(
             color: cardColor,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: color.withOpacity(0.35),
-              width: 1.5,
-            ),
+            border: Border.all(color: color.withOpacity(0.3), width: 1.5),
             boxShadow: [
               BoxShadow(
                 blurRadius: 14,
@@ -233,80 +222,98 @@ class _BookingCard extends StatelessWidget {
               ),
             ],
           ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(17),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Ikona statusu
-                CircleAvatar(
-                  radius: 22,
-                  backgroundColor: color.withOpacity(0.12),
-                  child: Icon(_statusIcon, color: color, size: 20),
+                // ── Zdjęcie po lewej — pełna wysokość karty ─────
+                SizedBox(
+                  width: 80,
+                  child: hasPhoto
+                      ? Image.network(
+                          provider!.avatarImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _PhotoFallback(
+                              serviceType: provider?.serviceType ?? booking.service),
+                        )
+                      : _PhotoFallback(
+                          serviceType: provider?.serviceType ?? booking.service),
                 ),
-                const SizedBox(width: 12),
-                // Nazwa + data
+                // ── Treść ────────────────────────────────────────
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Tytuł + chip
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              booking.service,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: color.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              _statusLabel,
-                              style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: color),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      if (booking.staffName != null) ...[
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 10, 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        // Tytuł + chip statusu
                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            Icon(Icons.person_rounded,
-                                size: 11, color: Colors.teal.shade600),
-                            const SizedBox(width: 3),
-                            Flexible(
+                            Expanded(
                               child: Text(
-                                booking.staffName!,
+                                booking.service,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 7, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: color.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                _statusLabel(s),
                                 style: TextStyle(
-                                    fontSize: 11,
-                                    color: Colors.teal.shade700),
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w700,
+                                    color: color),
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 2),
-                      ],
-                      Row(
-                        children: [
+                        const SizedBox(height: 4),
+                        // Dostawca
+                        if (provider != null) ...[
+                          Text(
+                            provider!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 11.5,
+                                color: Colors.grey.shade600,
+                                fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 3),
+                        ],
+                        // Pracownik
+                        if (booking.staffName != null) ...[
+                          Row(children: [
+                            Icon(Icons.person_rounded,
+                                size: 11, color: Colors.teal.shade600),
+                            const SizedBox(width: 3),
+                            Flexible(
+                              child: Text(booking.staffName!,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.teal.shade700)),
+                            ),
+                          ]),
+                          const SizedBox(height: 3),
+                        ],
+                        // Data i godzina
+                        Row(children: [
                           Icon(Icons.calendar_today_outlined,
                               size: 11, color: Colors.grey.shade500),
                           const SizedBox(width: 4),
@@ -320,22 +327,39 @@ class _BookingCard extends StatelessWidget {
                                   color: Colors.grey.shade600),
                             ),
                           ),
-                        ],
-                      ),
-                    ],
+                        ]),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                // Chevron → otwiera szczegóły
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.grey.shade400,
-                  size: 22,
+                // Chevron
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Icon(Icons.chevron_right_rounded,
+                      color: Colors.grey.shade400, size: 22),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Placeholder dla zdjęcia — ikona dopasowana do specjalności ───────────────
+class _PhotoFallback extends StatelessWidget {
+  final String serviceType;
+  const _PhotoFallback({required this.serviceType});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = serviceTypeColor(serviceType);
+    final icon  = serviceTypeIcon(serviceType);
+    return Container(
+      color: color.withOpacity(0.1),
+      child: Center(
+        child: Icon(icon, size: 34, color: color.withOpacity(0.55)),
       ),
     );
   }

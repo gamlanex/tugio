@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 import '../models/service_type.dart';
+import '../services/language_service.dart';
 import 'service_type_repository.dart';
 
 class HttpServiceTypeRepository implements ServiceTypeRepository {
@@ -19,7 +20,7 @@ class HttpServiceTypeRepository implements ServiceTypeRepository {
       debugPrint('[HttpServiceTypeRepository] status=${res.statusCode} body=${res.body.substring(0, res.body.length.clamp(0, 200))}');
 
       if (res.statusCode != 200) {
-        throw Exception('GET /service-types zwrócił ${res.statusCode}: ${res.body}');
+        throw Exception(LanguageService.instance.text(pl: 'GET /service-types zwrócił ${res.statusCode}: ${res.body}', en: 'GET /service-types returned ${res.statusCode}: ${res.body}'));
       }
 
       final list = jsonDecode(res.body) as List<dynamic>;

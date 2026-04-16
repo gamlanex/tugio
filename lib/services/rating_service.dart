@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
+import 'language_service.dart';
 
 /// Serwis oceniania usługodawców.
 /// Wysyła POST na endpoint API z oceną 1–5.
@@ -17,7 +18,7 @@ class RatingService {
     required String userId,
     required int rating,
   }) async {
-    assert(rating >= 1 && rating <= 5, 'Ocena musi być w zakresie 1–5');
+    assert(rating >= 1 && rating <= 5, LanguageService.instance.text(pl: 'Ocena musi być w zakresie 1-5', en: 'Rating must be between 1 and 5'));
 
     final uri = Uri.parse(
         '${AppConfig.apiBaseUrl}/providers/$providerId/ratings');
@@ -37,12 +38,12 @@ class RatingService {
         )
         .timeout(
           AppConfig.requestTimeout,
-          onTimeout: () => throw RatingException('Przekroczono czas oczekiwania'),
+          onTimeout: () => throw RatingException(LanguageService.instance.text(pl: 'Przekroczono czas oczekiwania', en: 'Request timed out')),
         );
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw RatingException(
-        'Błąd serwera (${response.statusCode}): ${response.body}',
+        LanguageService.instance.text(pl: 'Błąd serwera (${response.statusCode}): ${response.body}', en: 'Server error (${response.statusCode}): ${response.body}'),
       );
     }
   }

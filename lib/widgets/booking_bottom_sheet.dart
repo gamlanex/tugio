@@ -3,6 +3,8 @@ import '../models/provider.dart';
 import '../models/service_option.dart';
 import '../utils/date_helpers.dart';
 import '../utils/provider_avatar.dart';
+import '../l10n/app_strings.dart';
+import '../services/language_service.dart';
 
 /// Bottom sheet rezerwacji — duży, prawie pełnoekranowy.
 /// Zwraca wybraną [ServiceOption] lub null jeśli użytkownik anuluje.
@@ -29,57 +31,42 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   // Mock usługi dla danego usługodawcy z opisami i cenami.
   // TODO: zamienić na wywołanie API GET /providers/{id}/services
-  List<ServiceOption> get _services {
+  List<ServiceOption> _services(AppStrings s) {
     switch (widget.provider.serviceType) {
       case 'Fryzjer':
         return [
-          const ServiceOption('Strzyżenie damskie',
-              'Mycie, strzyżenie i stylizacja włosów.', 120, 60),
-          const ServiceOption('Strzyżenie męskie',
-              'Klasyczne lub nowoczesne strzyżenie.', 70, 30),
-          const ServiceOption(
-              'Koloryzacja',
-              'Pełna koloryzacja lub odrosty z pielęgnacją.',
-              250,
-              120,
+          ServiceOption(s.svcHaircutWomen, s.svcHaircutWomenDesc, 120, 60),
+          ServiceOption(s.svcHaircutMen, s.svcHaircutMenDesc, 70, 30),
+          ServiceOption(s.svcHairColoring, s.svcHairColoringDesc, 250, 120,
               requiresConfirmation: true),
-          const ServiceOption('Modelowanie',
-              'Blow-dry, fale lub prostowanie.', 90, 45,
+          ServiceOption(s.svcHairStyling, s.svcHairStylingDesc, 90, 45,
               requiresConfirmation: true),
         ];
       case 'Psycholog':
         return [
-          const ServiceOption(
-              'Konsultacja indywidualna',
-              'Pierwsza wizyta, diagnoza i omówienie celów terapii.',
-              200,
-              60,
+          ServiceOption(s.svcPsychologyConsultation,
+              s.svcPsychologyConsultationDesc, 200, 60,
               requiresConfirmation: true),
-          const ServiceOption('Sesja terapeutyczna',
-              'Regularna sesja terapii indywidualnej.', 180, 50),
-          const ServiceOption('Terapia par',
-              'Sesja dla par — komunikacja i relacje.', 300, 90,
+          ServiceOption(
+              s.svcTherapySession, s.svcTherapySessionDesc, 180, 50),
+          ServiceOption(s.svcCouplesTherapy, s.svcCouplesTherapyDesc, 300, 90,
               requiresConfirmation: true),
         ];
       case 'Trener personalny':
         return [
-          const ServiceOption(
-              'Trening personalny',
-              'Indywidualny plan ćwiczeń dostosowany do Twoich celów.',
-              150,
-              60),
-          const ServiceOption('Analiza postawy',
-              'Ocena biomechaniki i korygowanie wad postawy.', 120, 45,
+          ServiceOption(
+              s.svcPersonalTraining, s.svcPersonalTrainingDesc, 150, 60),
+          ServiceOption(s.svcPostureAnalysis, s.svcPostureAnalysisDesc, 120,
+              45,
               requiresConfirmation: true),
-          const ServiceOption('Konsultacja dietetyczna',
-              'Plan żywieniowy wspierający Twój trening.', 100, 40),
+          ServiceOption(
+              s.svcNutritionConsultation, s.svcNutritionConsultationDesc, 100, 40),
         ];
       default:
         return [
-          ServiceOption('Wizyta standardowa',
-              'Standardowa wizyta u ${widget.provider.name}.', 150, 60),
-          const ServiceOption('Wizyta pilna',
-              'Szybka konsultacja w trybie pilnym.', 200, 30,
+          ServiceOption(s.svcStandardVisit,
+              s.svcStandardVisitDesc(widget.provider.name), 150, 60),
+          ServiceOption(s.svcUrgentVisit, s.svcUrgentVisitDesc, 200, 30,
               requiresConfirmation: true),
         ];
     }
@@ -94,7 +81,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final services = _services;
+    final s = AppStrings.of(context);
+    final services = _services(s);
     final selected = services[_selectedServiceIndex];
     final endTime = _addMinutes(widget.time, selected.durationMinutes);
 
@@ -162,7 +150,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                         fontSize: 16,
                                         fontWeight: FontWeight.w700)),
                                 const SizedBox(height: 3),
-                                Text(widget.provider.serviceType,
+                                Text(LanguageService.instance.serviceTypeLabel(widget.provider.serviceType),
                                     style: TextStyle(
                                         fontSize: 13,
                                         color: Colors.grey.shade600)),
@@ -252,8 +240,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                     const SizedBox(height: 20),
 
                     // Nagłówek sekcji usług
-                    const Text('Wybierz usługę',
-                        style: TextStyle(
+                    Text(s.chooseServiceLabel,
+                        style: const TextStyle(
                             fontSize: 15, fontWeight: FontWeight.w700)),
                     const SizedBox(height: 10),
 
@@ -329,7 +317,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                               )),
                                         ),
                                         Text(
-                                          '${svc.price} zł',
+                                          '${svc.price} ${s.currencySuffix}',
                                           style: TextStyle(
                                             fontWeight: FontWeight.w800,
                                             fontSize: 15,
@@ -389,8 +377,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                               const SizedBox(width: 3),
                                               Text(
                                                 svc.requiresConfirmation
-                                                    ? 'Wymaga potwierdzenia'
-                                                    : 'Natychmiastowa',
+                                                    ? s.requiresConfirmation
+                                                    : s.instantBooking,
                                                 style: TextStyle(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w600,
@@ -470,7 +458,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                       fontSize: 12, color: Colors.black54),
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis),
-                              Text('${selected.price} zł',
+                              Text('${selected.price} ${s.currencySuffix}',
                                   style: const TextStyle(
                                       fontSize: 22,
                                       fontWeight: FontWeight.w800,
@@ -505,8 +493,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                                   borderRadius: BorderRadius.circular(14)),
                             ),
                             onPressed: () => Navigator.pop(ctx, null),
-                            child: const Text('Anuluj',
-                                style: TextStyle(
+                            child: Text(s.cancel,
+                                style: const TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w600,
                                     color: Colors.black54)),
@@ -534,8 +522,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                             ),
                             label: Text(
                               selected.requiresConfirmation
-                                  ? 'Wyślij prośbę'
-                                  : 'Zarezerwuj',
+                                  ? s.sendRequestButton
+                                  : s.bookButton,
                               style: const TextStyle(
                                   fontSize: 14, fontWeight: FontWeight.w700),
                             ),

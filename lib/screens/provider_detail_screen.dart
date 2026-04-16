@@ -4,7 +4,9 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/provider.dart';
 import '../services/rating_service.dart';
+import '../services/language_service.dart';
 import '../utils/provider_avatar.dart';
+import '../l10n/app_strings.dart';
 
 class ProviderDetailScreen extends StatefulWidget {
   final ServiceProvider provider;
@@ -42,20 +44,20 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
         rating: stars,
       );
       if (mounted) {
-        setState(() => _feedbackMsg = 'Dziękujemy za ocenę!');
+        setState(() => _feedbackMsg = AppStrings.of(context).ratingThanks);
       }
     } on RatingException catch (e) {
       if (mounted) {
         setState(() {
           _savedRating = 0;
-          _feedbackMsg = 'Błąd: ${e.message}';
+          _feedbackMsg = AppStrings.of(context).ratingError(e.message);
         });
       }
     } catch (_) {
       if (mounted) {
         setState(() {
           _savedRating = 0;
-          _feedbackMsg = 'Nie udało się wysłać oceny.';
+          _feedbackMsg = AppStrings.of(context).ratingErrorSendFailed;
         });
       }
     } finally {
@@ -87,6 +89,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final color = serviceTypeColor(widget.provider.serviceType);
     final icon = serviceTypeIcon(widget.provider.serviceType);
 
@@ -104,72 +107,136 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
               onPressed: () => Navigator.pop(context),
             ),
             flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      color.withOpacity(0.95),
-                      color.withOpacity(0.7),
-                    ],
-                  ),
-                ),
-                child: SafeArea(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 32),
-                      Container(
-                        width: 80,
-                        height: 80,
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // ── Tło: zdjęcie hero lub gradient ───────────────
+                  if (widget.provider.heroImageUrl != null)
+                    Image.network(
+                      widget.provider.heroImageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.25),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(icon, color: Colors.white, size: 42),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        widget.provider.name,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          height: 1.2,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            widget.provider.serviceType,
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.white.withOpacity(0.85),
-                            ),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [color.withOpacity(0.95), color.withOpacity(0.7)],
                           ),
-                          if (widget.provider.rating != null) ...[
-                            const SizedBox(width: 10),
-                            Icon(Icons.star_rounded,
-                                color: Colors.amber.shade300, size: 15),
-                            const SizedBox(width: 3),
-                            Text(
-                              widget.provider.rating!.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
+                        ),
+                      ),
+                    )
+                  else
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [color.withOpacity(0.95), color.withOpacity(0.7)],
+                        ),
+                      ),
+                    ),
+                  // ── Gradient overlay dla czytelności tekstu ───────
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.15),
+                          Colors.black.withOpacity(0.65),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // ── Tekst i awatar ────────────────────────────────
+                  SafeArea(
+                    child: Align(
+                      alignment: Alignment.bottomLeft,
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            // Awatar (zdjęcie lub ikona)
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2.5),
+                                color: color.withOpacity(0.5),
+                              ),
+                              child: ClipOval(
+                                child: widget.provider.avatarImageUrl != null
+                                    ? Image.network(
+                                        widget.provider.avatarImageUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (_, __, ___) =>
+                                            Icon(icon, color: Colors.white, size: 32),
+                                      )
+                                    : Icon(icon, color: Colors.white, size: 32),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            // Nazwa i typ + ocena
+                            Expanded(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    widget.provider.name,
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w800,
+                                      color: Colors.white,
+                                      height: 1.2,
+                                      shadows: [
+                                        Shadow(blurRadius: 4, color: Colors.black45),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 3),
+                                  Row(
+                                    children: [
+                                      Text(
+                                        LanguageService.instance.serviceTypeLabel(widget.provider.serviceType),
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          color: Colors.white.withOpacity(0.9),
+                                          shadows: const [
+                                            Shadow(blurRadius: 3, color: Colors.black45),
+                                          ],
+                                        ),
+                                      ),
+                                      if (widget.provider.rating != null) ...[
+                                        const SizedBox(width: 10),
+                                        Icon(Icons.star_rounded,
+                                            color: Colors.amber.shade300, size: 14),
+                                        const SizedBox(width: 3),
+                                        Text(
+                                          widget.provider.rating!.toStringAsFixed(1),
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w700,
+                                            color: Colors.white,
+                                            shadows: [
+                                              Shadow(blurRadius: 3, color: Colors.black45),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ],
                               ),
                             ),
                           ],
-                        ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
             ),
           ),
@@ -186,7 +253,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                       if (widget.provider.phone != null)
                         _ActionChip(
                           icon: Icons.phone_rounded,
-                          label: 'Zadzwoń',
+                          label: s.callButton,
                           color: color,
                           onTap: _callPhone,
                         ),
@@ -194,7 +261,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                         const SizedBox(width: 10),
                       _ActionChip(
                         icon: Icons.map_rounded,
-                        label: 'Mapa',
+                        label: s.mapButton,
                         color: color,
                         onTap: _openMaps,
                       ),
@@ -202,7 +269,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                         const SizedBox(width: 10),
                         _ActionChip(
                           icon: Icons.language_rounded,
-                          label: 'Strona',
+                          label: s.websiteButton,
                           color: color,
                           onTap: _openWebsite,
                         ),
@@ -214,7 +281,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                   // ── Opis ─────────────────────────────────────
                   if (widget.provider.description != null) ...[
                     _SectionCard(
-                      title: 'O usługodawcy',
+                      title: s.aboutProviderTitle,
                       child: Text(
                         widget.provider.description!,
                         style: TextStyle(
@@ -232,7 +299,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
 
                   // ── Kontakt i adres ──────────────────────────
                   _SectionCard(
-                    title: 'Kontakt i adres',
+                    title: s.contactAddressTitle,
                     child: Column(
                       children: [
                         _InfoRow(
@@ -280,7 +347,8 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                             children: [
                               TileLayer(
                                 urlTemplate:
-                                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                    'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+                                subdomains: const ['a', 'b', 'c', 'd'],
                                 userAgentPackageName: 'com.example.test_1',
                               ),
                               MarkerLayer(
@@ -330,7 +398,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                                     Icon(Icons.open_in_new,
                                         size: 13, color: color),
                                     const SizedBox(width: 4),
-                                    Text('Otwórz w Mapach',
+                                    Text(s.openInMapsButton,
                                         style: TextStyle(
                                             fontSize: 11,
                                             color: color,
@@ -349,7 +417,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
                   // ── Godziny otwarcia ─────────────────────────
                   if (widget.provider.openingHours.isNotEmpty) ...[
                     _SectionCard(
-                      title: 'Godziny otwarcia',
+                      title: s.openingHoursTitle,
                       child: Column(
                         children: widget.provider.openingHours.entries.map((e) {
                           return Padding(
@@ -383,7 +451,7 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
 
                   // ── Ocena użytkownika ─────────────────────────
                   _SectionCard(
-                    title: 'Twoja ocena',
+                    title: s.userRatingTitle,
                     child: _RatingWidget(
                       savedRating: _savedRating,
                       hoverRating: _hoverRating,
@@ -416,9 +484,9 @@ class _ProviderDetailScreenState extends State<ProviderDetailScreen> {
             ),
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.calendar_month_rounded),
-            label: const Text(
-              'Pokaż kalendarz',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+            label: Text(
+              s.showCalendarButton,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
             ),
           ),
         ),
@@ -450,8 +518,9 @@ class _RatingWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final displayRating = hoverRating > 0 ? hoverRating : savedRating;
-    final labels = ['', 'Słabo', 'Ujdzie', 'Dobrze', 'Bardzo dobrze', 'Świetnie!'];
+    final labels = ['', s.ratingPoor, s.ratingFair, s.ratingGood, s.ratingVeryGood, s.ratingExcellent];
 
     return Column(
       children: [
@@ -505,17 +574,16 @@ class _RatingWidget extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: feedbackMsg!.startsWith('Błąd') ||
-                                feedbackMsg!.startsWith('Nie')
-                            ? Colors.red.shade600
-                            : accentColor,
+                        color: feedbackMsg == s.ratingThanks
+                            ? accentColor
+                            : Colors.red.shade600,
                       ),
                     )
                   : Text(
                       key: ValueKey(displayRating),
                       displayRating > 0
                           ? labels[displayRating]
-                          : 'Dotknij gwiazdkę, żeby ocenić',
+                          : s.ratingTapToRate,
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey.shade500,

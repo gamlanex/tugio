@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import '../models/booking.dart';
+import 'language_service.dart';
 
 /// Importuje eventy z pliku .ics wybranego przez użytkownika.
 /// Działa na wszystkich platformach (web, Android, iOS, desktop).
@@ -23,7 +24,7 @@ class IcsImportService {
     }
 
     final bytes = result.files.first.bytes;
-    if (bytes == null) throw IcsParseException('Nie udało się odczytać pliku');
+    if (bytes == null) throw IcsParseException(LanguageService.instance.text(pl: 'Nie udało się odczytać pliku', en: 'Could not read the file'));
 
     final text = utf8.decode(bytes, allowMalformed: true);
     return _parseIcs(text);
@@ -168,12 +169,12 @@ class IcsImportService {
 
 class IcsImportCancelledException implements Exception {
   @override
-  String toString() => 'Import anulowany';
+  String toString() => LanguageService.instance.text(pl: 'Import anulowany', en: 'Import cancelled');
 }
 
 class IcsParseException implements Exception {
   final String message;
   IcsParseException(this.message);
   @override
-  String toString() => 'Błąd parsowania ICS: $message';
+  String toString() => LanguageService.instance.text(pl: 'Błąd parsowania ICS: $message', en: 'ICS parse error: $message');
 }

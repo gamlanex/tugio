@@ -3,10 +3,18 @@ import 'screens/login_screen.dart';
 import 'screens/lock_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
+import 'services/language_service.dart';
 import 'utils/app_theme.dart';
+import 'l10n/app_strings.dart';
 
 // ── Globalny stan motywu ─────────────────────────────────────────────────────
 final themeModeNotifier = ValueNotifier<ThemeMode>(ThemeMode.light);
+
+// ── Globalny stan języka: 'pl' lub 'en' ──────────────────────────────────────
+final languageNotifier = LanguageService.instance.notifier;
+
+Future<void> setAppLanguage(String languageCode) =>
+    LanguageService.instance.setLanguage(languageCode);
 
 // ── Globalny stan danych: true = Mock, false = API ───────────────────────────
 final useMockNotifier = ValueNotifier<bool>(true);
@@ -19,6 +27,7 @@ final authStateNotifier = ValueNotifier<AuthState>(AuthState.unknown);
 // ── Start aplikacji ──────────────────────────────────────────────────────────
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await LanguageService.instance.initialize();
 
   // Sprawdź czy jest zapisana sesja (JWT w secure storage)
   await AuthService.instance.initialize();
@@ -46,15 +55,21 @@ class TugioApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeModeNotifier,
-      builder: (_, mode, __) => MaterialApp(
-        title: 'Tugio',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
-        themeMode: mode,
-        home: const AuthGate(),
+    return ValueListenableBuilder<String>(
+      valueListenable: languageNotifier,
+      builder: (_, lang, __) => LanguageScope(
+        notifier: languageNotifier,
+        child: ValueListenableBuilder<ThemeMode>(
+          valueListenable: themeModeNotifier,
+          builder: (_, mode, __) => MaterialApp(
+            title: 'Tugio',
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
+            themeMode: mode,
+            home: const AuthGate(),
+          ),
+        ),
       ),
     );
   }

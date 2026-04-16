@@ -16,9 +16,10 @@ import '../../services/google_calendar_service.dart' show GoogleCalendarNotSigne
 import '../../services/ics_import_service.dart';
 import '../../utils/date_helpers.dart';
 import '../../utils/provider_avatar.dart';
-import '../../main.dart' show themeModeNotifier, useMockNotifier, authStateNotifier, AuthState;
-import '../../repositories/http_booking_repository.dart';
-import '../../repositories/http_provider_repository.dart';
+import '../../l10n/app_strings.dart';
+import '../../main.dart' show themeModeNotifier, useMockNotifier, languageNotifier, setAppLanguage, authStateNotifier, AuthState;
+import '../../repositories/sf_booking_repository.dart';
+import '../../repositories/sf_provider_repository.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 import '../../widgets/booking_detail_sheet.dart';
 import '../../widgets/section_card.dart';
@@ -95,11 +96,30 @@ class _MainScreenState extends State<MainScreen> {
   @override
   void initState() {
     super.initState();
+    languageNotifier.addListener(_onLanguageChanged);
     final now = DateTime.now();
     _selectedDate = DateTime(now.year, now.month, now.day);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await _loadInitialData();
     });
+  }
+
+  Future<void> _reloadLocalizedMockData() async {
+    if (useMockNotifier.value) {
+      MockProviderRepository.reset();
+    }
+    setState(() {
+      _providers.clear();
+      _myBookings.clear();
+      _selectedProvider = null;
+      _deviceCalendarLoaded = false;
+    });
+    await _loadInitialData();
+  }
+
+  void _onLanguageChanged() {
+    if (!mounted) return;
+    _reloadLocalizedMockData();
   }
 
   Future<void> _loadInitialData() async {
@@ -124,6 +144,7 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    languageNotifier.removeListener(_onLanguageChanged);
     _dayScrollController.dispose();
     _weekScrollController.dispose();
     super.dispose();
@@ -133,6 +154,7 @@ class _MainScreenState extends State<MainScreen> {
   Future<void> _loadDeviceCalendarEvents() async {
     if (_deviceCalendarLoaded || _importInProgress) return;
     _importInProgress = true;
+    final s = AppStrings.of(context);
     try {
       final imported =
           await CalendarSyncService.instance.fetchEvents(_selectedDate);
@@ -148,8 +170,8 @@ class _MainScreenState extends State<MainScreen> {
     } on DeviceCalendarPermissionDeniedException {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Brak zgody na odczyt kalendarza urządzenia')),
+          SnackBar(
+              content: Text(s.deviceCalendarPermissionDenied)),
         );
       }
     } catch (e) {
@@ -157,7 +179,7 @@ class _MainScreenState extends State<MainScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Błąd kalendarza: $e'),
+            content: Text(s.calendarSyncError(e.toString())),
             duration: const Duration(seconds: 8),
           ),
         );
@@ -175,7 +197,7 @@ class _MainScreenState extends State<MainScreen> {
   /// Formatuje czas oczekiwania od [since] do teraz
   String _formatWaitTime(DateTime since) {
     final diff = DateTime.now().difference(since);
-    if (diff.inMinutes < 1) return 'chwilę';
+    if (diff.inMinutes < 1) return AppStrings.of(context).aFewMoments;
     if (diff.inHours < 1) return '${diff.inMinutes} min';
     final h = diff.inHours;
     final m = diff.inMinutes % 60;
@@ -193,13 +215,14 @@ class _MainScreenState extends State<MainScreen> {
 
   /// Import pliku .ics (web i desktop)
   Future<void> _importIcsFile() async {
+    final s = AppStrings.of(context);
     try {
       final imported = await IcsImportService.instance.pickAndImport();
       if (!mounted) return;
 
       if (imported.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Plik .ics nie zawiera żadnych eventów')),
+          SnackBar(content: Text(s.icsFileNoEvents)),
         );
         return;
       }
@@ -214,8 +237,8 @@ class _MainScreenState extends State<MainScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Zaimportowano ${imported.length} eventów z kalendarza'),
-            action: SnackBarAction(label: 'OK', onPressed: () {}),
+            content: Text(s.icsImportSuccess(imported.length)),
+            action: SnackBarAction(label: s.ok, onPressed: () {}),
           ),
         );
       }
@@ -224,7 +247,7 @@ class _MainScreenState extends State<MainScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Błąd importu: $e')),
+          SnackBar(content: Text(s.icsImportError(e.toString()))),
         );
       }
     }
@@ -308,6 +331,7 @@ class _MainScreenState extends State<MainScreen> {
 
   Future<void> _createBooking(String time, DateTime day, ServiceOption service,
       {bool forceConfirmation = false, String? staffName}) async {
+    final s = AppStrings.of(context);
     final parts = time.split(':');
     final start = DateTime(
       day.year, day.month, day.day,
@@ -323,7 +347,7 @@ class _MainScreenState extends State<MainScreen> {
       start: start,
       durationMinutes: service.durationMinutes,
       status: isPending ? BookingStatus.pending : BookingStatus.booked,
-      note: isPending ? 'Oczekuje na potwierdzenie' : null,
+      note: isPending ? s.statusAwaitingConfirmation : null,
       pendingSince: isPending ? now : null,
       staffName: staffName,
       providerId: _selectedProvider!.id,
@@ -336,7 +360,7 @@ class _MainScreenState extends State<MainScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Błąd tworzenia rezerwacji: $e'),
+            content: Text(s.bookingCreationError(e.toString())),
             backgroundColor: Colors.red.shade700,
           ),
         );
@@ -378,12 +402,13 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _confirmCancel(Booking booking) async {
+    final s = AppStrings.of(context);
     final controller = TextEditingController();
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Odwołać rezerwację?'),
+        title: Text(s.cancelBookingTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -392,9 +417,9 @@ class _MainScreenState extends State<MainScreen> {
             TextField(
               controller: controller,
               maxLines: 3,
-              decoration: const InputDecoration(
-                labelText: 'Powód (opcjonalnie)',
-                border: OutlineInputBorder(),
+              decoration: InputDecoration(
+                labelText: s.cancelBookingReasonLabel,
+                border: const OutlineInputBorder(),
               ),
             ),
           ],
@@ -402,12 +427,12 @@ class _MainScreenState extends State<MainScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Zostaw'),
+            child: Text(s.leave),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Odwołaj'),
+            child: Text(s.cancelBookingTooltip),
           ),
         ],
       ),
@@ -421,7 +446,7 @@ class _MainScreenState extends State<MainScreen> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Błąd anulowania rezerwacji: $e'),
+              content: Text(s.bookingCancellationError(e.toString())),
               backgroundColor: Colors.red.shade700,
             ),
           );
@@ -438,8 +463,8 @@ class _MainScreenState extends State<MainScreen> {
           SnackBar(
             content: Text(
               controller.text.trim().isEmpty
-                  ? 'Rezerwacja odwołana'
-                  : 'Rezerwacja odwołana: ${controller.text.trim()}',
+                  ? s.bookingCancelled
+                  : s.bookingCancelledWithReason(controller.text.trim()),
             ),
           ),
         );
@@ -515,6 +540,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   void _openServiceTypePicker() {
+    final s = AppStrings.of(context);
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -526,7 +552,7 @@ class _MainScreenState extends State<MainScreen> {
             });
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Zasubskrybowano: ${provider.name}'),
+                content: Text(s.providerSubscribed(provider.name)),
               ),
             );
           },
@@ -537,13 +563,14 @@ class _MainScreenState extends State<MainScreen> {
 
   /// Przełącza między danymi Mock a prawdziwym API i przeładowuje dane.
   Future<void> _toggleDataSource() async {
+    final s = AppStrings.of(context);
     final switchToApi = useMockNotifier.value;
     useMockNotifier.value = !switchToApi;
 
     setState(() {
       if (switchToApi) {
-        _providerRepo = HttpProviderRepository();
-        _bookingRepo = HttpBookingRepository();
+        _providerRepo = SfProviderRepository();
+        _bookingRepo = SfBookingRepository();
       } else {
         _providerRepo = MockProviderRepository();
         _bookingRepo = MockBookingRepository();
@@ -570,7 +597,7 @@ class _MainScreenState extends State<MainScreen> {
       await _loadInitialData();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Błąd połączenia z API: $e\nPrzywrócono tryb Mock.'),
+          content: Text(s.apiConnectionError(e.toString())),
           backgroundColor: Colors.red.shade700,
           duration: const Duration(seconds: 5),
         ),
@@ -604,6 +631,7 @@ class _MainScreenState extends State<MainScreen> {
 
     final provider = _selectedProvider!;
     final user = AuthService.instance.currentUser;
+    final s = AppStrings.of(context);
 
     return Scaffold(
       backgroundColor: Theme.of(context).brightness == Brightness.dark
@@ -641,12 +669,12 @@ class _MainScreenState extends State<MainScreen> {
         actions: [
           if (kIsWeb && !AuthService.instance.isSignedIn)
             IconButton(
-              tooltip: 'Importuj kalendarz (.ics)',
+              tooltip: s.importCalendarTooltip,
               icon: const Icon(Icons.upload_file_outlined),
               onPressed: _importIcsFile,
             ),
           IconButton(
-            tooltip: 'Odśwież / synchronizuj kalendarz',
+            tooltip: s.refreshCalendarTooltip,
             icon: const Icon(Icons.sync),
             onPressed: _reloadDeviceCalendarEvents,
           ),
@@ -674,7 +702,7 @@ class _MainScreenState extends State<MainScreen> {
                     PopupMenuItem(
                       enabled: false,
                       child: Text(
-                        user?.name ?? user?.email ?? 'Zalogowany',
+                        user?.name ?? user?.email ?? s.loggedInDefault,
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 13),
                       ),
@@ -691,7 +719,7 @@ class _MainScreenState extends State<MainScreen> {
                             size: 18,
                           ),
                           const SizedBox(width: 8),
-                          Text(isDark ? 'Jasna skórka' : 'Ciemna skórka'),
+                          Text(isDark ? s.lightMode : s.darkMode),
                         ],
                       ),
                     ),
@@ -716,12 +744,12 @@ class _MainScreenState extends State<MainScreen> {
                               children: [
                                 Text(
                                   isMock
-                                      ? 'Przełącz na API'
-                                      : 'Przełącz na Mock',
+                                      ? s.switchToApi
+                                      : s.switchToMock,
                                   style: const TextStyle(fontSize: 13),
                                 ),
                                 Text(
-                                  isMock ? 'Teraz: dane lokalne' : 'Teraz: API',
+                                  isMock ? s.currentLocalData : s.currentApi,
                                   style: TextStyle(
                                     fontSize: 10,
                                     color: isMock
@@ -736,25 +764,36 @@ class _MainScreenState extends State<MainScreen> {
                         ],
                       ),
                     ),
-                    const PopupMenuDivider(),
-                    const PopupMenuItem(
-                      value: 'security',
+                    PopupMenuItem(
+                      value: 'language',
                       child: Row(
                         children: [
-                          Icon(Icons.security_outlined, size: 18),
-                          SizedBox(width: 8),
-                          Text('Zabezpieczenia'),
+                          const Icon(Icons.language_rounded, size: 18),
+                          const SizedBox(width: 8),
+                          Text('${s.languageLabel}: '
+                              '${languageNotifier.value == 'en' ? s.languageEnglish : s.languagePolish}'),
                         ],
                       ),
                     ),
                     const PopupMenuDivider(),
-                    const PopupMenuItem(
+                    PopupMenuItem(
+                      value: 'security',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.security_outlined, size: 18),
+                          const SizedBox(width: 8),
+                          Text(s.securitySettings),
+                        ],
+                      ),
+                    ),
+                    const PopupMenuDivider(),
+                    PopupMenuItem(
                       value: 'signout',
                       child: Row(
                         children: [
-                          Icon(Icons.logout, size: 18),
-                          SizedBox(width: 8),
-                          Text('Wyloguj'),
+                          const Icon(Icons.logout, size: 18),
+                          const SizedBox(width: 8),
+                          Text(s.logout),
                         ],
                       ),
                     ),
@@ -766,6 +805,9 @@ class _MainScreenState extends State<MainScreen> {
                           isDark ? ThemeMode.light : ThemeMode.dark;
                     }
                     if (value == 'datasource') _toggleDataSource();
+                    if (value == 'language') {
+                      setAppLanguage(languageNotifier.value == 'en' ? 'pl' : 'en');
+                    }
                     if (value == 'security') _openSecuritySettings();
                   },
                 );
@@ -848,7 +890,7 @@ class _MainScreenState extends State<MainScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content:
-                  Text('✅ Rezerwacja "${booking.service}" potwierdzona!'),
+                  Text(AppStrings.of(context).bookingConfirmedMessage(booking.service)),
               backgroundColor: Colors.green.shade700,
               duration: const Duration(seconds: 3),
             ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../l10n/app_strings.dart';
 
 class AddBookingSheet extends StatelessWidget {
   final VoidCallback onExistingProvider;
@@ -12,6 +13,7 @@ class AddBookingSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     return Padding(
       padding: EdgeInsets.fromLTRB(
           24, 16, 24, 24 + MediaQuery.of(context).viewInsets.bottom),
@@ -29,29 +31,29 @@ class AddBookingSheet extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          const Text(
-            'Dodaj rezerwację',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          Text(
+            s.addBookingTitle,
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
-          const Text(
-            'Wybierz usługodawcę',
-            style: TextStyle(fontSize: 13, color: Colors.black54),
+          Text(
+            s.chooseProviderSubtitle,
+            style: const TextStyle(fontSize: 13, color: Colors.black54),
           ),
           const SizedBox(height: 20),
           OptionTile(
             icon: Icons.people_outline,
             color: Colors.indigo,
-            title: 'Z moich usługodawców',
-            subtitle: 'Wybierz z listy zasubskrybowanych',
+            title: s.existingProviderTitle,
+            subtitle: s.existingProviderSubtitle,
             onTap: onExistingProvider,
           ),
           const SizedBox(height: 12),
           OptionTile(
             icon: Icons.add_location_alt_outlined,
             color: Colors.teal,
-            title: 'Znajdź nowego usługodawcę',
-            subtitle: 'Szukaj w pobliżu na mapach Google',
+            title: s.newProviderTitle,
+            subtitle: s.newProviderSubtitle,
             onTap: onNewProvider,
           ),
         ],

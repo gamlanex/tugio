@@ -6,6 +6,7 @@ import '../repositories/mock_service_type_repository.dart';
 import '../repositories/http_service_type_repository.dart';
 import '../widgets/cached_svg_icon.dart';
 import '../main.dart' show useMockNotifier;
+import '../l10n/app_strings.dart';
 import 'map_search_screen.dart';
 
 class ServiceTypeScreen extends StatefulWidget {
@@ -48,7 +49,7 @@ class _ServiceTypeScreenState extends State<ServiceTypeScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Nie udało się pobrać kategorii.\nSprawdź połączenie.';
+          _error = AppStrings.of(context).categoriesLoadError;
           _errorDetail = e.toString();
         });
       }
@@ -63,7 +64,7 @@ class _ServiceTypeScreenState extends State<ServiceTypeScreen> {
       MaterialPageRoute(
         builder: (_) => MapSearchScreen(
           serviceType: type.isOther ? null : type.name,
-          serviceTypeLabel: type.name,
+          serviceTypeLabel: type.localizedName,
           onProviderSubscribed: (provider) {
             widget.onProviderSubscribed(provider);
             Navigator.popUntil(context, (route) => route.isFirst);
@@ -78,7 +79,7 @@ class _ServiceTypeScreenState extends State<ServiceTypeScreen> {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Wybierz typ usługi'),
+        title: Text(AppStrings.of(context).chooseServiceTitle),
         centerTitle: true,
         elevation: 0,
       ),
@@ -95,14 +96,14 @@ class _ServiceTypeScreenState extends State<ServiceTypeScreen> {
               children: [
                 // ── Nagłówek ───────────────────────────────────
                 if (!isLandscape) ...[
-                  const Text(
-                    'Czego szukasz?',
-                    style: TextStyle(
+                  Text(
+                    AppStrings.of(context).whatAreYouLookingFor,
+                    style: const TextStyle(
                         fontSize: 20, fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Wybierz kategorię, a pokażemy Ci usługodawców w Twojej okolicy.',
+                    AppStrings.of(context).chooseCategorySubtitle,
                     style: TextStyle(
                         fontSize: 13,
                         color: cs.onSurface.withOpacity(0.55),
@@ -207,7 +208,7 @@ class _TypeCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Text(
-                type.name,
+                type.localizedName,
                 textAlign: TextAlign.center,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -277,7 +278,7 @@ class _ErrorView extends StatelessWidget {
             OutlinedButton.icon(
               onPressed: onRetry,
               icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Spróbuj ponownie'),
+              label: Text(AppStrings.of(context).retry),
             ),
           ],
         ),

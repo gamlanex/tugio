@@ -3,9 +3,11 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/provider.dart';
 import '../models/booking.dart';
 import '../services/auth_service.dart';
+import '../services/language_service.dart';
 import '../utils/date_helpers.dart';
-import '../utils/provider_avatar.dart';
+import '../utils/provider_avatar.dart' show serviceTypeIcon, serviceTypeColor;
 import '../widgets/booking_detail_sheet.dart';
+import '../l10n/app_strings.dart';
 import 'provider_detail_screen.dart';
 import 'service_type_screen.dart';
 
@@ -65,7 +67,7 @@ class _SubscribedProvidersScreenState
           onProviderSubscribed: (provider) {
             widget.onProviderSubscribed?.call(provider);
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Zasubskrybowano: ${provider.name}')),
+              SnackBar(content: Text(AppStrings.of(context).providerSubscribed(provider.name))),
             );
           },
         ),
@@ -113,7 +115,7 @@ class _SubscribedProvidersScreenState
 
   /// Buduje sekcję "Moje rezerwacje" dla danego dostawcy.
   /// Zwraca pustą listę jeśli brak rezerwacji — wtedy sekcja jest pomijana.
-  List<Widget> _buildProviderBookings(ServiceProvider provider, {required bool isDark}) {
+  List<Widget> _buildProviderBookings(ServiceProvider provider, {required bool isDark, required AppStrings s}) {
     final now = DateTime.now();
     final myBookings = widget.bookings
         .where((b) =>
@@ -139,18 +141,18 @@ class _SubscribedProvidersScreenState
         case BookingStatus.inquiry: return Icons.help_outline_rounded;
       }
     }
-    String _statusLabel(BookingStatus s) {
-      switch (s) {
-        case BookingStatus.booked: return 'Potwierdzona';
-        case BookingStatus.pending: return 'Oczekuje';
-        case BookingStatus.inquiry: return 'Zapytanie';
+    String _statusLabel(BookingStatus st) {
+      switch (st) {
+        case BookingStatus.booked: return s.statusBooked;
+        case BookingStatus.pending: return s.statusPending;
+        case BookingStatus.inquiry: return s.statusInquiry;
       }
     }
 
     final labelColor = isDark ? Colors.grey.shade400 : Colors.grey.shade700;
     return [
       Text(
-        'Moje rezerwacje',
+        s.myBookingsLabel,
         style: TextStyle(
             fontSize: 12, fontWeight: FontWeight.w600,
             color: labelColor),
@@ -214,11 +216,12 @@ class _SubscribedProvidersScreenState
   }
 
   Future<bool> _confirmCancel(Booking booking) async {
+    final s = AppStrings.of(context);
     final result = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Odwołać rezerwację?'),
+        title: Text(s.cancelBookingTitle),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -233,12 +236,12 @@ class _SubscribedProvidersScreenState
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Zostaw'),
+            child: Text(s.leave),
           ),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Odwołaj'),
+            child: Text(s.cancelBookingConfirmButton),
           ),
         ],
       ),
@@ -259,8 +262,8 @@ class _SubscribedProvidersScreenState
     final exists = widget.bookings.any((b) => sameDateTime(b.start, start));
     if (exists) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('W tym terminie masz już rezerwację')),
+        SnackBar(
+            content: Text(AppStrings.of(context).slotAlreadyBooked)),
       );
       return;
     }
@@ -286,20 +289,21 @@ class _SubscribedProvidersScreenState
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = isDark ? const Color(0xFF1A1C2E) : const Color(0xFFEEF0FB);
     final cardColor = isDark ? const Color(0xFF22263A) : Colors.white;
     return Scaffold(
       backgroundColor: bgColor,
       appBar: AppBar(
-        title: const Text('Moi usługodawcy'),
+        title: Text(s.myProvidersTitle),
         centerTitle: true,
         backgroundColor: bgColor,
         elevation: 0,
         leading: const BackButton(),
         actions: [
           IconButton(
-            tooltip: 'Dodaj nowych usługodawców',
+            tooltip: s.addProvidersTooltip,
             onPressed: _openAddNew,
             icon: Container(
               padding: const EdgeInsets.all(6),
@@ -341,7 +345,9 @@ class _SubscribedProvidersScreenState
                 ),
               ],
             ),
-            child: Column(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(17),
+              child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // ── nagłówek karty usługodawcy ───────────────
@@ -369,8 +375,8 @@ class _SubscribedProvidersScreenState
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        ProviderAvatar(
-                          serviceType: provider.serviceType,
+                        _ProviderAvatarOrImage(
+                          provider: provider,
                           radius: 24,
                         ),
                         const SizedBox(width: 14),
@@ -390,7 +396,7 @@ class _SubscribedProvidersScreenState
                                     ),
                                   ),
                                   Tooltip(
-                                    message: 'Dwukrotnie dotknij aby zobaczyć szczegóły',
+                                    message: s.providerDetailsTip,
                                     child: Icon(Icons.info_outline_rounded,
                                         size: 14,
                                         color: Colors.grey.shade400),
@@ -399,7 +405,7 @@ class _SubscribedProvidersScreenState
                               ),
                               const SizedBox(height: 3),
                               Text(
-                                provider.serviceType,
+                                LanguageService.instance.serviceTypeLabel(provider.serviceType),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey.shade600,
@@ -456,6 +462,72 @@ class _SubscribedProvidersScreenState
 
                 // ── rozwinięty panel ─────────────────────────
                 if (isExpanded) ...[
+                  // ── Hero zdjęcie ──────────────────────────────
+                  if (provider.heroImageUrl != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.zero,
+                      child: Stack(
+                        children: [
+                          SizedBox(
+                            height: 160,
+                            width: double.infinity,
+                            child: Image.network(
+                              provider.heroImageUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                            ),
+                          ),
+                          // gradient overlay u dołu — przejście do karty
+                          Positioned(
+                            bottom: 0, left: 0, right: 0,
+                            child: Container(
+                              height: 60,
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    cardColor.withOpacity(0.95),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          // przycisk "pełne detale" w prawym górnym rogu
+                          Positioned(
+                            top: 10, right: 10,
+                            child: GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ProviderDetailScreen(
+                                    provider: provider,
+                                    userId: AuthService.instance.currentUser?.email,
+                                  ),
+                                ),
+                              ),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.open_in_new, size: 12, color: Colors.white),
+                                    const SizedBox(width: 5),
+                                    Text(s.fullDetailsButton,
+                                        style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600)),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const Divider(height: 1),
                   Padding(
                     padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
@@ -470,7 +542,7 @@ class _SubscribedProvidersScreenState
                                 child: OutlinedButton.icon(
                                   onPressed: () => _callPhone(provider),
                                   icon: const Icon(Icons.phone_rounded, size: 16),
-                                  label: const Text('Zadzwoń'),
+                                  label: Text(s.callButton),
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(vertical: 10),
                                     shape: RoundedRectangleBorder(
@@ -483,7 +555,7 @@ class _SubscribedProvidersScreenState
                               child: OutlinedButton.icon(
                                 onPressed: () => _openMaps(provider),
                                 icon: const Icon(Icons.map_rounded, size: 16),
-                                label: const Text('Mapa'),
+                                label: Text(s.mapButton),
                                 style: OutlinedButton.styleFrom(
                                   padding: const EdgeInsets.symmetric(vertical: 10),
                                   shape: RoundedRectangleBorder(
@@ -496,11 +568,11 @@ class _SubscribedProvidersScreenState
                         const SizedBox(height: 12),
 
                         // ── Moje rezerwacje u tego dostawcy ──────
-                        ..._buildProviderBookings(provider, isDark: isDark),
+                        ..._buildProviderBookings(provider, isDark: isDark, s: s),
 
                         // ── Wolne sloty na wybraną datę ──────────
                         Text(
-                          'Wolne sloty — ${formatDate(widget.selectedDate)}',
+                          s.freeSlotsForDate(formatDate(widget.selectedDate)),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -575,6 +647,7 @@ class _SubscribedProvidersScreenState
                 ],
               ],
             ),
+            ), // ClipRRect
           );
         },
       ),
@@ -582,6 +655,7 @@ class _SubscribedProvidersScreenState
   }
 
   Widget _buildEmpty() {
+    final s = AppStrings.of(context);
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -589,7 +663,7 @@ class _SubscribedProvidersScreenState
           Icon(Icons.people_outline, size: 64, color: Colors.grey.shade300),
           const SizedBox(height: 16),
           Text(
-            'Nie masz jeszcze usługodawców',
+            s.noProviders,
             style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey.shade500,
@@ -599,10 +673,41 @@ class _SubscribedProvidersScreenState
           FilledButton.icon(
             onPressed: _openAddNew,
             icon: const Icon(Icons.add),
-            label: const Text('Znajdź i dodaj usługodawcę'),
+            label: Text(s.findAddProviderButton),
             style: FilledButton.styleFrom(backgroundColor: Colors.indigo),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ── Avatar z opcjonalnym zdjęciem ─────────────────────────────────────────────
+class _ProviderAvatarOrImage extends StatelessWidget {
+  final ServiceProvider provider;
+  final double radius;
+  const _ProviderAvatarOrImage({required this.provider, this.radius = 24});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = serviceTypeColor(provider.serviceType);
+    final icon  = serviceTypeIcon(provider.serviceType);
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color.withOpacity(0.15),
+      ),
+      child: ClipOval(
+        child: provider.avatarImageUrl != null
+            ? Image.network(
+                provider.avatarImageUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) =>
+                    Icon(icon, color: color, size: radius),
+              )
+            : Icon(icon, color: color, size: radius),
       ),
     );
   }

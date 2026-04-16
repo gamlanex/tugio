@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:http/http.dart' as http;
 import '../models/booking.dart';
 import 'auth_service.dart';
+import 'language_service.dart';
 
 /// Pobiera eventy z Google Calendar API v3.
 /// Wymaga scope: https://www.googleapis.com/auth/calendar.readonly
@@ -86,7 +87,7 @@ class GoogleCalendarService {
         debugPrint('Kalendarz $calId: znaleziono ${items.length} eventów w zakresie dat');
         for (final item in items) {
           final raw = item as Map<String, dynamic>;
-          final title = raw['summary'] ?? '(brak tytułu)';
+          final title = raw['summary'] ?? LanguageService.instance.text(pl: '(brak tytułu)', en: '(no title)');
           final start = (raw['start'] as Map?)??{};
           final startStr = start['dateTime'] ?? start['date'] ?? '?';
           debugPrint('  -> $title @ $startStr');
@@ -158,12 +159,12 @@ class GoogleCalendarService {
 
 class GoogleCalendarNotSignedInException implements Exception {
   @override
-  String toString() => 'Nie jesteś zalogowany przez Google';
+  String toString() => LanguageService.instance.text(pl: 'Nie jesteś zalogowany przez Google', en: 'You are not signed in with Google');
 }
 
 class GoogleCalendarApiException implements Exception {
   final String message;
   GoogleCalendarApiException(this.message);
   @override
-  String toString() => 'Błąd Google Calendar API: $message';
+  String toString() => LanguageService.instance.text(pl: 'Błąd Google Calendar API: $message', en: 'Google Calendar API error: $message');
 }

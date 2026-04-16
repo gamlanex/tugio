@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_strings.dart';
 
 class DateNavigator extends StatelessWidget {
   final String title;
@@ -20,6 +21,7 @@ class DateNavigator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     return Row(
       children: [
         IconButton(
@@ -53,7 +55,7 @@ class DateNavigator extends StatelessWidget {
                   ),
                 ),
               ),
-              child: const Text('Dziś'),
+              child: Text(s.today),
             ),
           ),
           const SizedBox(width: 4),

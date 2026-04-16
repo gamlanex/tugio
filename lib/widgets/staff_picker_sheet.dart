@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_strings.dart';
 
 /// Bottom sheet do wyboru pracownika dla danego slotu.
 /// Zwraca wybrany String (imię) lub null jeśli użytkownik zamknie.
@@ -16,6 +17,7 @@ class StaffPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final cs = Theme.of(context).colorScheme;
     final bottom = MediaQuery.of(context).padding.bottom;
     final screenH = MediaQuery.of(context).size.height;
@@ -46,7 +48,7 @@ class StaffPickerSheet extends StatelessWidget {
 
           // Tytuł
           Text(
-            'Wybierz osobę — $time',
+            s.selectPersonTitle(time),
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
           ),
           Text(

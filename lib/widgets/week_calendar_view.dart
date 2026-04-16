@@ -109,9 +109,13 @@ class WeekCalendarView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final double rowHeight = 38 * zoom;
+    // zoom=1.0 → siatka wypełnia dokładnie viewHeight (nagłówek + siatka = viewHeight).
+    // minZoom=1.0 w ZoomListener gwarantuje brak możliwości zmniejszenia.
     const double headerHeight = 52;
+    const double headerGap = 8;
     final totalRows = _endHour - _startHour;
+    final double baseRowHeight = (viewHeight - headerHeight - headerGap) / totalRows;
+    final double rowHeight = baseRowHeight * zoom;
 
     // Budujemy wiersz nagłówków (wspólny kod dla sticky + siatki)
     Widget buildHeader() => Row(
@@ -179,21 +183,20 @@ class WeekCalendarView extends StatelessWidget {
           ],
         );
 
-    // Wysokość siatki = min(treść, dostępne miejsce) — bez białego ekranu po zoom-out.
+    // contentHeight = pełna wysokość siatki przy bieżącym zoom
     final double contentHeight = totalRows * rowHeight;
-    final double maxGridHeight = viewHeight - headerHeight - 8;
-    final double gridHeight = contentHeight < maxGridHeight ? contentHeight : maxGridHeight;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
+    return SizedBox(
+      height: viewHeight,
+      child: Column(
+        mainAxisSize: MainAxisSize.max,
+        children: [
           // ── nagłówki dni — STICKY (nie scrollują) ────────
           buildHeader(),
           const SizedBox(height: 8),
 
-          // ── siatka — scrollowana osobno ──────────────────
-          SizedBox(
-            height: gridHeight,
+          // ── siatka — scrollowana, wypełnia resztę ekranu ─
+          Expanded(
             child: SingleChildScrollView(
               controller: scrollController,
               child: SizedBox(
@@ -364,8 +367,9 @@ class WeekCalendarView extends StatelessWidget {
               ),
             ),
           ),         // SingleChildScrollView
-        ),           // SizedBox(gridHeight)
+        ),           // Expanded
       ],             // Column children
-    );               // Column
+      ),             // Column
+    );               // SizedBox(viewHeight)
   }
 }

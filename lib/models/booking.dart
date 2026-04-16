@@ -1,3 +1,4 @@
+import '../services/language_service.dart';
 enum BookingStatus {
   inquiry,   // zapytanie ofertowe
   booked,    // potwierdzona natychmiastowo
@@ -38,7 +39,7 @@ class Booking {
   DateTime get end => start.add(Duration(minutes: durationMinutes));
 
   String get timeText {
-    if (isAllDay) return 'Cały dzień';
+    if (isAllDay) return LanguageService.instance.text(pl: 'Cały dzień', en: 'All day');
     return '${_two(start.hour)}:${_two(start.minute)} - ${_two(end.hour)}:${_two(end.minute)}';
   }
 

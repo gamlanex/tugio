@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_strings.dart';
 import '../services/auth_service.dart';
 import '../main.dart' show authStateNotifier, AuthState, useMockNotifier;
 
@@ -57,11 +58,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Utwórz konto',
-            style: TextStyle(fontWeight: FontWeight.w700)),
+        title: Text(s.createAccountTitle,
+            style: const TextStyle(fontWeight: FontWeight.w700)),
         centerTitle: true,
         elevation: 0,
       ),
@@ -76,10 +78,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // ── Imię ────────────────────────────────────────
                 _Field(
                   controller: _nameCtr,
-                  label: 'Imię i nazwisko',
+                  label: s.fullNameLabel,
                   icon: Icons.person_outline,
                   validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Podaj imię' : null,
+                      (v == null || v.trim().isEmpty) ? s.fullNameRequired : null,
                 ),
                 const SizedBox(height: 14),
 
@@ -90,8 +92,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   icon: Icons.email_outlined,
                   keyboardType: TextInputType.emailAddress,
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Podaj email';
-                    if (!v.contains('@')) return 'Nieprawidłowy email';
+                    if (v == null || v.isEmpty) return s.emailRequired;
+                    if (!v.contains('@')) return s.emailInvalid;
                     return null;
                   },
                 ),
@@ -100,7 +102,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // ── Hasło ───────────────────────────────────────
                 _Field(
                   controller: _passCtr,
-                  label: 'Hasło',
+                  label: s.passwordLabel,
                   icon: Icons.lock_outline,
                   obscure: !_showPass,
                   suffix: IconButton(
@@ -110,8 +112,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                     onPressed: () => setState(() => _showPass = !_showPass),
                   ),
                   validator: (v) {
-                    if (v == null || v.isEmpty) return 'Podaj hasło';
-                    if (v.length < 8) return 'Minimum 8 znaków';
+                    if (v == null || v.isEmpty) return s.passwordRequired;
+                    if (v.length < 8) return s.passwordMinLength;
                     return null;
                   },
                 ),
@@ -120,7 +122,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 // ── Potwierdź hasło ─────────────────────────────
                 _Field(
                   controller: _confirmCtr,
-                  label: 'Potwierdź hasło',
+                  label: s.confirmPasswordLabel,
                   icon: Icons.lock_outline,
                   obscure: !_showConfirm,
                   suffix: IconButton(
@@ -131,7 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         setState(() => _showConfirm = !_showConfirm),
                   ),
                   validator: (v) => v != _passCtr.text
-                      ? 'Hasła nie są identyczne'
+                      ? s.passwordMismatch
                       : null,
                 ),
 
@@ -153,8 +155,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
                           width: 20,
                           child: CircularProgressIndicator(
                               color: Colors.white, strokeWidth: 2))
-                      : const Text('Utwórz konto',
-                          style: TextStyle(
+                      : Text(s.createAccountTitle,
+                          style: const TextStyle(
                               fontSize: 15, fontWeight: FontWeight.w600)),
                 ),
 
@@ -181,14 +183,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text('Masz już konto? ',
+                    Text(s.alreadyHaveAccount + ' ',
                         style: TextStyle(
                             color: cs.onSurface.withOpacity(0.6),
                             fontSize: 14)),
                     GestureDetector(
                       onTap: () => Navigator.pop(context),
                       child: Text(
-                        'Zaloguj się',
+                        s.signinLink,
                         style: TextStyle(
                           color: Colors.indigo,
                           fontWeight: FontWeight.w600,

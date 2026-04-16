@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../models/booking.dart';
 import '../../../utils/date_helpers.dart';
+import '../../../l10n/app_strings.dart';
 
 class BookingsSection extends StatelessWidget {
   final List<Booking> bookings;
@@ -32,14 +33,15 @@ class BookingsSection extends StatelessWidget {
     return Icons.help_outline_rounded;
   }
 
-  static String _bookingLabel(Booking b) {
-    if (b.status == BookingStatus.pending) return 'Oczekuje';
-    if (b.status == BookingStatus.booked) return 'Potwierdzona';
-    return 'Inquiry';
+  static String _bookingLabel(Booking b, AppStrings s) {
+    if (b.status == BookingStatus.pending) return s.statusPending;
+    if (b.status == BookingStatus.booked) return s.statusBooked;
+    return s.statusInquiry;
   }
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final cs = Theme.of(context).colorScheme;
 
     return Container(
@@ -66,10 +68,10 @@ class BookingsSection extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Row(
                 children: [
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Nadchodzące rezerwacje',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                      s.upcomingBookingsTitle,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                     ),
                   ),
                   AnimatedRotation(
@@ -163,7 +165,7 @@ class BookingsSection extends StatelessWidget {
                                               color: Colors.orange.shade600),
                                           const SizedBox(width: 3),
                                           Text(
-                                            'Czeka ${formatWaitTime(booking.pendingSince!)}',
+                                            s.waitTime(formatWaitTime(booking.pendingSince!)),
                                             style: TextStyle(
                                               fontSize: 11,
                                               color: Colors.orange.shade700,
@@ -184,7 +186,7 @@ class BookingsSection extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text(
-                                  _bookingLabel(booking),
+                                  _bookingLabel(booking, s),
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.w700,
@@ -196,7 +198,7 @@ class BookingsSection extends StatelessWidget {
                               IconButton(
                                 icon: const Icon(Icons.close, size: 18),
                                 color: Colors.red.shade400,
-                                tooltip: 'Odwołaj',
+                                tooltip: s.cancelBookingTooltip,
                                 onPressed: () => onBookingTap(booking),
                                 visualDensity: VisualDensity.compact,
                               ),
@@ -221,7 +223,7 @@ class BookingsSection extends StatelessWidget {
                                 icon: const Icon(
                                     Icons.check_circle_outline,
                                     size: 16),
-                                label: const Text('Symuluj potwierdzenie',
+                                label: Text(s.simulateConfirmation,
                                     style: TextStyle(fontSize: 12)),
                                 onPressed: () => onSimulateConfirm(booking),
                               ),

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/booking.dart';
 import '../utils/date_helpers.dart';
+import '../l10n/app_strings.dart';
 
 /// Opisuje pozycję rezerwacji w układzie kolumnowym (dla nakładających się eventów).
 class _EventLayout {
@@ -149,6 +150,7 @@ class DayCalendarView extends StatelessWidget {
     List<Booking> timedBookings,
     double hourRowHeight, {
     required bool isConfirmation,
+    required AppStrings s,
   }) {
     final result = <Widget>[];
     for (final slot in slots) {
@@ -254,8 +256,8 @@ class DayCalendarView extends StatelessWidget {
                                 else if (showHint)
                                   Text(
                                     isConfirmation
-                                        ? 'Wyślij prośbę'
-                                        : 'Zarezerwuj',
+                                        ? s.sendRequestHint
+                                        : s.bookHint,
                                     style: TextStyle(
                                       fontSize: 9,
                                       color: isConfirmation
@@ -282,14 +284,14 @@ class DayCalendarView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final totalHours = _endHour - _startHour;
     // Minimalna wysokość wiersza gwarantująca czytelny tekst w komórkach.
     // zoom=1.0 → "dopasuj do ekranu", ale nigdy poniżej _minHourRowHeight.
-    const double _minHourRowHeight = 44.0;
-    final double hourRowHeight = math.max(
-      _minHourRowHeight,
-      (viewHeight / totalHours) * zoom,
-    );
+    // zoom=1.0 → każda godzina zajmuje dokładnie viewHeight/totalHours px
+    // → cały dzień mieści się na ekranie bez scrollowania.
+    // minZoom=1.0 w ZoomListener gwarantuje, że nie zejdziemy poniżej.
+    final double hourRowHeight = (viewHeight / totalHours) * zoom;
     final totalHeight = totalHours * hourRowHeight;
 
     final allDayBookings = bookings
@@ -306,9 +308,9 @@ class DayCalendarView extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (allDayBookings.isNotEmpty) ...[
-          const Text(
-            'Cały dzień',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+          Text(
+            s.allDay,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
           ),
           const SizedBox(height: 8),
           ...allDayBookings.map((booking) {
@@ -403,8 +405,8 @@ class DayCalendarView extends StatelessWidget {
                         }),
 
                         // 2. Wolne sloty (niebieskie, pół-szerokości, prawa strona)
-                        ..._buildSlotWidgets(freeSlots, timedBookings, hourRowHeight, isConfirmation: false),
-                        ..._buildSlotWidgets(confirmationSlots, timedBookings, hourRowHeight, isConfirmation: true),
+                        ..._buildSlotWidgets(freeSlots, timedBookings, hourRowHeight, isConfirmation: false, s: s),
+                        ..._buildSlotWidgets(confirmationSlots, timedBookings, hourRowHeight, isConfirmation: true, s: s),
 
                         // 3. Rezerwacje z układem kolumnowym (NA WIERZCHU) ───
                         ..._computeEventLayouts(timedBookings).expand(
@@ -497,11 +499,11 @@ class DayCalendarView extends StatelessWidget {
                                           const SizedBox(height: 3),
                                           Text(
                                             isPending
-                                                ? 'Oczekuje'
+                                                ? s.statusPending
                                                 : layout.booking.status ==
                                                         BookingStatus.booked
-                                                    ? 'Potwierdzona'
-                                                    : 'Inquiry',
+                                                    ? s.statusBooked
+                                                    : s.statusInquiry,
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
                                             style: TextStyle(

@@ -13,6 +13,7 @@
 import 'package:google_sign_in/google_sign_in.dart';
 import 'api_auth_service.dart';
 import 'local_auth_service.dart';
+import 'language_service.dart';
 import '../models/app_user.dart';
 
 export 'api_auth_service.dart' show AuthResult;
@@ -81,7 +82,7 @@ class AuthService {
   Future<AuthResult> signInWithGoogle({bool useMock = false}) async {
     try {
       final account = await _googleSignIn.signIn();
-      if (account == null) return AuthResult.error('Logowanie anulowane');
+      if (account == null) return AuthResult.error(LanguageService.instance.text(pl: 'Logowanie anulowane', en: 'Sign-in cancelled'));
       _googleAccount = account;
 
       String idToken = '';
@@ -100,7 +101,7 @@ class AuthService {
       if (result.success) _isLocked = false;
       return result;
     } catch (e) {
-      return AuthResult.error('Błąd Google Sign-In: $e');
+      return AuthResult.error(LanguageService.instance.text(pl: 'Błąd Google Sign-In: $e', en: 'Google Sign-In error: $e'));
     }
   }
 

@@ -13,6 +13,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:local_auth/error_codes.dart' as auth_error;
 import 'package:flutter/services.dart';
+import 'language_service.dart';
 
 class LocalAuthService {
   static final LocalAuthService instance = LocalAuthService._();
@@ -91,14 +92,15 @@ class LocalAuthService {
   // ── Biometria ─────────────────────────────────────────────────────────────
 
   Future<BiometricResult> authenticateBiometric(
-      {String reason = 'Odblokuj aplikację Tugio'}) async {
+      {String? reason}) async {
     try {
       // Weryfikacja sprzętowa przed wywołaniem promptu systemowego.
       if (!await canUseBiometrics()) return BiometricResult.notAvailable;
 
       debugPrint('[LocalAuth] authenticateBiometric: wywołuję authenticate()');
       final ok = await _localAuth.authenticate(
-        localizedReason: reason,
+        localizedReason: reason ??
+            LanguageService.instance.text(pl: 'Odblokuj aplikację Tugio', en: 'Unlock Tugio app'),
         options: const AuthenticationOptions(
           biometricOnly: true,   // NIE zezwalaj na fallback do PIN systemu
           stickyAuth: true,

@@ -6,11 +6,13 @@ import '../repositories/booking_repository.dart';
 import '../repositories/mock_booking_repository.dart';
 import '../repositories/mock_provider_repository.dart';
 import '../repositories/provider_repository.dart';
-import '../repositories/http_booking_repository.dart';
-import '../repositories/http_provider_repository.dart';
+import '../repositories/sf_booking_repository.dart';
+import '../repositories/sf_provider_repository.dart';
 import '../services/auth_service.dart';
 import '../utils/date_helpers.dart';
-import '../main.dart' show themeModeNotifier, useMockNotifier, authStateNotifier, AuthState;
+import '../utils/provider_avatar.dart' show serviceTypeIcon, serviceTypeColor;
+import '../main.dart' show themeModeNotifier, useMockNotifier, languageNotifier, setAppLanguage, authStateNotifier, AuthState;
+import '../l10n/app_strings.dart';
 import 'main/main_screen.dart';
 import 'subscribed_providers_screen.dart';
 import 'service_type_screen.dart';
@@ -37,21 +39,30 @@ class _HomeScreenState extends State<HomeScreen> {
     super.initState();
     _loadData();
     useMockNotifier.addListener(_onSourceToggled);
+    languageNotifier.addListener(_onLanguageChanged);
   }
 
   @override
   void dispose() {
     useMockNotifier.removeListener(_onSourceToggled);
+    languageNotifier.removeListener(_onLanguageChanged);
     super.dispose();
   }
 
   void _onSourceToggled() {
     final isMock = useMockNotifier.value;
     setState(() {
-      _providerRepo = isMock ? MockProviderRepository() : HttpProviderRepository();
-      _bookingRepo  = isMock ? MockBookingRepository()  : HttpBookingRepository();
+      _providerRepo = isMock ? MockProviderRepository() : SfProviderRepository();
+      _bookingRepo  = isMock ? MockBookingRepository()  : SfBookingRepository();
     });
     _loadData();
+  }
+
+  void _onLanguageChanged() {
+    if (useMockNotifier.value) {
+      MockProviderRepository.reset();
+    }
+    _loadData(showSpinner: false);
   }
 
   Future<void> _loadData({bool showSpinner = true}) async {
@@ -79,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Błąd ładowania danych: $e')),
+        SnackBar(content: Text(AppStrings.of(context).dataLoadError(e.toString()))),
       );
     }
   }
@@ -170,6 +181,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // ── build ────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
+    final s = AppStrings.of(context);
     final user = AuthService.instance.currentUser;
     final cs = Theme.of(context).colorScheme;
 
@@ -205,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     PopupMenuItem(
                       enabled: false,
                       child: Text(
-                        user?.name ?? user?.email ?? 'Zalogowany',
+                        user?.name ?? user?.email ?? s.loggedInDefault,
                         style: const TextStyle(
                             fontWeight: FontWeight.w600, fontSize: 13),
                       ),
@@ -218,7 +230,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ? Icons.light_mode_outlined
                             : Icons.dark_mode_outlined, size: 18),
                         const SizedBox(width: 8),
-                        Text(isDark ? 'Jasna skórka' : 'Ciemna skórka'),
+                        Text(isDark ? s.lightMode : s.darkMode),
                       ]),
                     ),
                     PopupMenuItem(
@@ -232,16 +244,25 @@ class _HomeScreenState extends State<HomeScreen> {
                               : Colors.green.shade700,
                         ),
                         const SizedBox(width: 8),
-                        Text(isMock ? 'Przełącz na API' : 'Przełącz na Mock'),
+                        Text(isMock ? s.switchToApi : s.switchToMock),
+                      ]),
+                    ),
+                    PopupMenuItem(
+                      value: 'language',
+                      child: Row(children: [
+                        const Icon(Icons.language_rounded, size: 18),
+                        const SizedBox(width: 8),
+                        Text('${s.languageLabel}: '
+                            '${languageNotifier.value == 'en' ? s.languageEnglish : s.languagePolish}'),
                       ]),
                     ),
                     const PopupMenuDivider(),
-                    const PopupMenuItem(
+                    PopupMenuItem(
                       value: 'signout',
                       child: Row(children: [
-                        Icon(Icons.logout, size: 18),
-                        SizedBox(width: 8),
-                        Text('Wyloguj'),
+                        const Icon(Icons.logout, size: 18),
+                        const SizedBox(width: 8),
+                        Text(s.logout),
                       ]),
                     ),
                   ],
@@ -257,6 +278,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     }
                     if (v == 'datasource') {
                       useMockNotifier.value = !isMock;
+                    }
+                    if (v == 'language') {
+                      setAppLanguage(languageNotifier.value == 'en' ? 'pl' : 'en');
                     }
                   },
                 );
@@ -303,16 +327,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
                     final tileUpcoming = makeTile(
                         const Color(0xFF00897B), const Color(0xFFE6F4F1), const Color(0xFF152220),
-                        Icons.event_available_rounded, 'Nadchodzące\nrezerwacje',
-                        _openUpcomingBookings, _upcomingContent);
+                        Icons.event_available_rounded, s.upcomingBookingsTileTitle,
+                        _openUpcomingBookings, (h, d) => _upcomingContent(h, d, s));
                     final tileProviders = makeTile(
                         const Color(0xFF3949AB), const Color(0xFFEEF0FB), const Color(0xFF1A1C2E),
-                        Icons.people_rounded, 'Moi usługodawcy',
-                        _openProviders, _providersContent);
+                        Icons.people_rounded, s.myProvidersTileTitle,
+                        _openProviders, (h, d) => _providersContent(h, d, s));
                     final tileCalendar = makeTile(
                         const Color(0xFF6A1B9A), const Color(0xFFF3E8FB), const Color(0xFF1E1828),
-                        Icons.calendar_month_rounded, 'Kalendarz\nrezerwacji',
-                        _openCalendar, _calendarContent);
+                        Icons.calendar_month_rounded, s.bookingCalendarTileTitle,
+                        _openCalendar, (h, d) => _calendarContent(h, d, s));
 
                     if (isLandscape) {
                       // Landscape: 3 kolumny, wypełniają całą wysokość
@@ -378,20 +402,17 @@ class _HomeScreenState extends State<HomeScreen> {
   static const double _kLabel  = 14.0;   // "Wybrany:" label
   static const double _kSmGap  =  4.0;   // mały gap
 
-  Widget _providersContent(double availableH, bool isDark) {
+  Widget _providersContent(double availableH, bool isDark, AppStrings s) {
     final count = _providers.length;
     const accentColor = Color(0xFF3949AB);
     final labelClr = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
     final subClr   = isDark ? Colors.grey.shade400 : Colors.grey.shade500;
     final rowClr   = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
 
-    // Ile dostawców (poza wybranym) można pokazać w pozostałym miejscu?
-    // Stałe: header + gap8 + "Wybrany:" label + gap2 + wybrany row
-    double used = _kHeader + _kGap + _kLabel + _kSmGap + _kRow;
-    // Pozostali dostawcy (bez wybranego)
-    final others = _providers
-        .where((p) => p.id != _selectedProvider?.id)
-        .toList();
+    // Stałe: header + gap8 + "Wybrany:" label + gap2 + wybrany row (z awatarem ~20px)
+    const double kSelectedRow = 22.0;
+    double used = _kHeader + _kGap + _kLabel + _kSmGap + kSelectedRow;
+    final others = _providers.where((p) => p.id != _selectedProvider?.id).toList();
     int visibleOthers = 0;
     for (int i = 0; i < others.length; i++) {
       final needed = _kRow + (i == 0 ? _kGap : 0.0);
@@ -413,16 +434,34 @@ class _HomeScreenState extends State<HomeScreen> {
             color: accentColor, height: 1),
       ),
       Text(
-        count == 1 ? 'usługodawca' : 'usługodawców',
+        s.providerCountLabel(count),
         style: TextStyle(fontSize: 12, color: labelClr, fontWeight: FontWeight.w500),
       ),
       if (_selectedProvider != null) ...[
         const SizedBox(height: 8),
-        Text('Wybrany:', style: TextStyle(fontSize: 10, color: subClr)),
+        Text(s.selectedProviderLabel, style: TextStyle(fontSize: 10, color: subClr)),
         const SizedBox(height: 2),
         Row(children: [
-          const Icon(Icons.person_pin_rounded, size: 12, color: accentColor),
-          const SizedBox(width: 3),
+          // Mini awatar
+          Container(
+            width: 20, height: 20,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: accentColor.withOpacity(0.15),
+              border: Border.all(color: accentColor.withOpacity(0.3), width: 1),
+            ),
+            child: ClipOval(
+              child: _selectedProvider!.avatarImageUrl != null
+                  ? Image.network(
+                      _selectedProvider!.avatarImageUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) =>
+                          Icon(Icons.person, size: 11, color: accentColor),
+                    )
+                  : Icon(Icons.person, size: 11, color: accentColor),
+            ),
+          ),
+          const SizedBox(width: 5),
           Expanded(
             child: Text(
               _selectedProvider!.name,
@@ -450,7 +489,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
       if (hiddenOthers > 0) ...[
         const SizedBox(height: 4),
-        Text('+ $hiddenOthers innych', style: TextStyle(fontSize: 10.5, color: subClr)),
+        Text(s.moreOthers(hiddenOthers), style: TextStyle(fontSize: 10.5, color: subClr)),
       ],
     ];
 
@@ -461,66 +500,133 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _upcomingContent(double availableH, bool isDark) {
+  // Szuka dostawcy pasującego do rezerwacji — tylko po providerId, nigdy fallback
+  ServiceProvider? _providerForBooking(Booking b) {
+    if (b.providerId != null) {
+      try {
+        return _providers.firstWhere((p) => p.id == b.providerId);
+      } catch (_) {}
+    }
+    return null; // brak providerId = brak dostawcy = pokaż ikonę specjalności
+  }
+
+  Widget _upcomingContent(double availableH, bool isDark, AppStrings s) {
     final upcoming = _upcoming;
     final count = upcoming.length;
     const accentColor = Color(0xFF00897B);
     final labelClr = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
     final subClr   = isDark ? Colors.grey.shade400 : Colors.grey.shade500;
-    final rowClr   = isDark ? Colors.grey.shade300 : Colors.grey.shade700;
-
-    // Ile rezerwacji zmieści się po headerze?
-    double used = _kHeader;
-    int visible = 0;
-    for (int i = 0; i < upcoming.length; i++) {
-      final needed = _kRow + (i == 0 ? _kGap : 0.0);
-      final moreNeeded = (i < upcoming.length - 1) ? _kMore : 0.0;
-      if (used + needed + moreNeeded <= availableH) {
-        used += needed;
-        visible++;
-      } else {
-        break;
-      }
-    }
-    final hidden = count - visible;
+    final rowClr   = isDark ? Colors.grey.shade300 : Colors.grey.shade800;
+    final cardClr  = isDark ? const Color(0xFF1E2E2B) : Colors.white.withOpacity(0.7);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
       children: [
-        Text('$count',
-            style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800,
-                color: accentColor, height: 1)),
-        Text(count == 1 ? 'rezerwacja' : 'rezerwacji',
-            style: TextStyle(fontSize: 12, color: labelClr, fontWeight: FontWeight.w500)),
-        if (visible > 0) ...[
-          const SizedBox(height: 8),
-          ...upcoming.take(visible).map((b) => Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Padding(padding: const EdgeInsets.only(top: 4),
-                  child: Icon(Icons.circle, size: 5, color: subClr)),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  '${b.service}  ${shortDate(b.start)} ${b.timeText}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10.5, color: rowClr, height: 1.35),
+        // Header: liczba rezerwacji
+        Row(children: [
+          Text('$count',
+              style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800,
+                  color: accentColor, height: 1)),
+          const SizedBox(width: 6),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(s.bookingCountLabel(count),
+                style: TextStyle(fontSize: 12, color: labelClr,
+                    fontWeight: FontWeight.w500)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        // Scrollowalna lista — zajmuje całą pozostałą przestrzeń
+        Expanded(
+          child: upcoming.isEmpty
+              ? Center(
+                  child: Text(s.noUpcomingBookingsTile,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11, color: subClr, height: 1.4)),
+                )
+              : ListView.separated(
+                  padding: EdgeInsets.zero,
+                  itemCount: upcoming.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 6),
+                  itemBuilder: (ctx, i) {
+                    final b = upcoming[i];
+                    final provider = _providerForBooking(b);
+                    final statusColor = b.status == BookingStatus.booked
+                        ? Colors.green
+                        : Colors.orange;
+                    return Container(
+                      height: 54,
+                      decoration: BoxDecoration(
+                        color: cardClr,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: statusColor.withOpacity(0.3), width: 1),
+                      ),
+                      child: Row(
+                        children: [
+                          // Zdjęcie — kwadrat po lewej
+                          ClipRRect(
+                            borderRadius: const BorderRadius.only(
+                              topLeft: Radius.circular(11),
+                              bottomLeft: Radius.circular(11),
+                            ),
+                            child: SizedBox(
+                              width: 54, height: 54,
+                              child: provider?.avatarImageUrl != null
+                                  ? Image.network(
+                                      provider!.avatarImageUrl!,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          _AvatarFallback(
+                                              serviceType: provider?.serviceType),
+                                    )
+                                  : _AvatarFallback(
+                                      serviceType: provider?.serviceType ?? b.service),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          // Tekst
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(b.service,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: rowClr)),
+                                const SizedBox(height: 2),
+                                Text(
+                                  '${shortDate(b.start)}  ${b.timeText}',
+                                  style: TextStyle(
+                                      fontSize: 10.5, color: subClr),
+                                ),
+                              ],
+                            ),
+                          ),
+                          // Status dot
+                          Container(
+                            width: 6, height: 6,
+                            margin: const EdgeInsets.only(right: 10),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: statusColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
                 ),
-              ),
-            ]),
-          )),
-        ],
-        if (hidden > 0) ...[
-          const SizedBox(height: 4),
-          Text('+ $hidden więcej', style: TextStyle(fontSize: 10.5, color: subClr)),
-        ],
+        ),
       ],
     );
   }
 
-  Widget _calendarContent(double availableH, bool isDark) {
+  Widget _calendarContent(double availableH, bool isDark, AppStrings s) {
     final now = DateTime.now();
     const accentColor = Color(0xFF6A1B9A);
     final labelClr = isDark ? Colors.grey.shade400 : Colors.grey.shade600;
@@ -562,7 +668,7 @@ class _HomeScreenState extends State<HomeScreen> {
             style: TextStyle(fontSize: 12, color: labelClr, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         if (todayBookings.isEmpty)
-          Text('Brak wizyt\nna dziś',
+          Text(s.noBookingsToday,
               style: TextStyle(fontSize: 11, color: subClr, height: 1.4))
         else ...[
           ...todayBookings.take(visible).map((b) => Padding(
@@ -581,14 +687,14 @@ class _HomeScreenState extends State<HomeScreen> {
           )),
           if (hidden > 0) ...[
             const SizedBox(height: 4),
-            Text('+ $hidden więcej', style: TextStyle(fontSize: 10.5, color: subClr)),
+            Text(s.moreItems(hidden), style: TextStyle(fontSize: 10.5, color: subClr)),
           ],
         ],
         const SizedBox(height: 6),
         Row(children: [
           Icon(Icons.add_circle_outline, size: 11, color: accentColor.withOpacity(0.7)),
           const SizedBox(width: 3),
-          Text('Dodaj rezerwację',
+          Text(s.addBookingLink,
               style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w600, color: labelClr)),
         ]),
       ],
@@ -696,6 +802,25 @@ class _HomeTile extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ── Fallback dla zdjęcia usługodawcy w kaflu ──────────────────────────────────
+class _AvatarFallback extends StatelessWidget {
+  final String? serviceType;
+  const _AvatarFallback({this.serviceType});
+
+  @override
+  Widget build(BuildContext context) {
+    final st = serviceType ?? '';
+    final color = st.isNotEmpty ? serviceTypeColor(st) : const Color(0xFF00897B);
+    final icon  = st.isNotEmpty ? serviceTypeIcon(st) : Icons.event_rounded;
+    return Container(
+      color: color.withOpacity(0.12),
+      child: Center(
+        child: Icon(icon, size: 26, color: color.withOpacity(0.6)),
       ),
     );
   }

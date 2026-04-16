@@ -13,6 +13,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import 'package:flutter/material.dart';
+import '../l10n/app_strings.dart';
 import '../models/app_user.dart';
 import '../services/auth_service.dart';
 import '../services/local_auth_service.dart';
@@ -26,6 +27,8 @@ class LockScreen extends StatefulWidget {
 }
 
 class _LockScreenState extends State<LockScreen> {
+  AppStrings get s => AppStrings.of(context);
+
   String _pin = '';
   bool _biometricEnabled = false;
   bool _pinEnabled = false;
@@ -71,11 +74,11 @@ class _LockScreenState extends State<LockScreen> {
         break;
       case BiometricResult.lockedOut:
         setState(() =>
-            _error = 'Czytnik zablokowany. Wpisz PIN lub zaloguj się inaczej.');
+            _error = s.biometricLockedOut);
         break;
       case BiometricResult.notAvailable:
         setState(
-            () => _error = 'Biometria niedostępna. Wpisz PIN.');
+            () => _error = s.biometricUnavailableLock);
         break;
       case BiometricResult.failed:
         // Użytkownik odrzucił — nic nie robimy, PIN nadal dostępny
@@ -116,11 +119,11 @@ class _LockScreenState extends State<LockScreen> {
       authStateNotifier.value = AuthState.authenticated;
     } else if (result.isTooManyAttempts) {
       setState(() =>
-          _error = 'Zbyt wiele błędnych prób. Zaloguj się ponownie.');
+          _error = s.pinTooManyAttempts);
     } else {
       setState(() {
         final rem = result.remainingAttempts;
-        _error = 'Nieprawidłowy PIN. Pozostało prób: $rem';
+        _error = s.pinIncorrectRemaining(rem);
       });
     }
   }
@@ -188,9 +191,8 @@ class _LockScreenState extends State<LockScreen> {
               ElevatedButton.icon(
                 onPressed: _loading ? null : _tryBiometric,
                 icon: const Icon(Icons.fingerprint, size: 28),
-                label: const Text('Odblokuj odciskiem palca',
-                    style:
-                        TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                label: Text(s.unlockBiometricButton,
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
                 style: ElevatedButton.styleFrom(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
@@ -206,7 +208,7 @@ class _LockScreenState extends State<LockScreen> {
             TextButton(
               onPressed: _signOutAndGoToLogin,
               child: Text(
-                'Zaloguj się inaczej',
+                s.signinDifferently,
                 style: TextStyle(
                     color: cs.onSurface.withOpacity(0.55), fontSize: 14),
               ),
@@ -251,7 +253,7 @@ class _LockScreenState extends State<LockScreen> {
         ),
         const SizedBox(height: 24),
         Text(
-          'Odblokuj aplikację',
+          s.unlockApp,
           style: TextStyle(
               fontSize: 15,
               color: cs.onSurface.withOpacity(0.7),
